@@ -2,10 +2,10 @@
 
 layout(location = 0) in vec4 Position;
 
-out vec2 UV;
+out vec2 vTexCoord;
 
 void main()
 {
-	UV = (Position.xy+1)*0.5;
+	vTexCoord = Position.xy*0.5+0.5;
 	gl_Position = Position;
 }

@@ -14,11 +14,28 @@ class Controller :
         self.setting=setting
         self.__init_window__()
         self.__init_cl__()
+
+        self.isovalue = setting["ISOVALUE"]
+
         self.renderer = renderer.Renderer()
+        gl_buffers = self.renderer.gen_deffered_textures(self.setting["RAY_DOMAIN"])
+        flag = cl.mem_flags.READ_WRITE
+        self.deffered_buffer = [cl.GLTexture(self.ctx, flag, GL_TEXTURE_2D, 0, buf, 2) for buf in gl_buffers]
+
         self.raycaster = raycaster.Raycaster(self.ctx, self.devices, self.queue)
+        self.raycaster.setNumberofRays(self.setting["RAY_DOMAIN"])
+        self.raycaster.uploadVolumeData(self.setting["VOLUME_DATA_PATH"], 
+                                        self.setting["VOLUE_DATA_DIM"], 
+                                        self.setting["VOLUE_DATA_TYPE"])
+
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.callback_resize(self.wnd, w, h)
-        
+        self.MVP = np.eye(4).astype(np.float32)*0.75
+        self.MVP[2,2] = -self.MVP[2,2]
+        self.MVP[3,3] = 1
+        print(self.MVP)
+        self.invMVP = np.linalg.inv(self.MVP)
+        self.renderer.update_uniform(self.MVP)
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -37,12 +54,21 @@ class Controller :
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, GL_TRUE)
+        glfw.window_hint(glfw.RESIZABLE, glfw.FALSE)
 
+        
         self.wnd = glfw.create_window(
                         self.setting["WIN_WIDTH"], 
                         self.setting["WIN_HEIGHT"], 
                         "Renderer", 
                         None, None)
+
+        monitors = glfw.get_monitors()
+        workarea = glfw.get_monitor_workarea(monitors[1])
+        print(workarea)
+
+        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
+
 
         if not self.wnd :
             glfw.terminate()
@@ -50,6 +76,7 @@ class Controller :
 
         glfw.make_context_current(self.wnd)
         glfw.swap_interval(0)
+
         glfw.set_framebuffer_size_callback(self.wnd, self.callback_resize)
         glfw.set_key_callback(self.wnd, self.callback_keyboard)
         glfw.set_mouse_button_callback(self.wnd, self.callback_mouse)
@@ -58,10 +85,14 @@ class Controller :
         return True
 
     def update(self) :
-
-        cl.enqueue_acquire_gl_objects(self.queue, [self.frame_buffer,])
-        self.raycaster.Shading(self.frame_buffer, [self.setting["FBO_WIDTH"], self.setting["FBO_HEIGHT"]])
-        cl.enqueue_release_gl_objects(self.queue, [self.frame_buffer,])
+        msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+        cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
+        evt1 = self.raycaster.genRay(self.invMVP)
+        #self.raycaster.ray_dump()
+        #exit(0)
+        evt2 = self.raycaster.raycast(self.isovalue, self.deffered_buffer[0])
+        evt3 = self.raycaster.evalGradient(self.deffered_buffer[0], self.deffered_buffer[1])
+        cl.enqueue_release_gl_objects(self.queue, self.deffered_buffer)
         self.queue.finish()
 
     def rendering(self) :
@@ -81,39 +112,102 @@ class Controller :
             currentTime = glfw.get_time()
             deltaTime   = currentTime - lastTime
 
-            if(deltaTime >= 2.0) :
-                Log.info("{0:.2f} FPS.".format(frameCount/deltaTime))
+            if(deltaTime >= 5.0) :
+                fps = frameCount/deltaTime
+                Log.info("{0:.2f} FPS.".format(fps))
+                glfw.set_window_title(self.wnd, "Renderer({0:.2f} fps)".format(fps))
                 frameCount = 0
                 lastTime   = currentTime
 
         glfw.terminate()
 
+
     def callback_resize(self, window, w, h ) :
-        print("current window size : ", w,h)
-        fw,fh = glfw.get_framebuffer_size(window)
-        fw = self.setting["FBO_WIDTH"]*w//self.setting["WIN_WIDTH"]
-        fh = self.setting["FBO_HEIGHT"]*h//self.setting["WIN_HEIGHT"]
+        self.current_fbo_size = glfw.get_framebuffer_size(window)
+        glViewport(0, 0, self.current_fbo_size[0], self.current_fbo_size[1])
 
-        print("target fbo size : ", fw,fh)
+    def __update_MVP(self, MVP) :
+        self.MVP = MVP
+        self.invMVP = np.linalg.inv(self.MVP)
+        self.renderer.update_uniform(self.MVP)
 
-        
-        gl_buffer = self.renderer.gen_frame_buffer_texture([fw,fh])
-        self.frame_buffer = cl.GLTexture(self.ctx, cl.mem_flags.READ_WRITE, GL_TEXTURE_2D, 0, gl_buffer, 2)
-
-        fw,fh = glfw.get_framebuffer_size(window)
-        glViewport(0, 0, fw, fh)
-
-
-
-    
     def callback_keyboard(self, window, key, scancode, action, mods) :
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS :
             glfw.set_window_should_close(window, GL_TRUE);
 
+        if action == glfw.PRESS :
+            th = np.pi/30
+
+            match key :
+                case glfw.KEY_UP :
+                    if mods == glfw.MOD_SHIFT :
+                        S = np.eye(4).astype(np.float32)*1.1
+                        S[3,3] = 1
+                        self.__update_MVP(np.linalg.inv(np.dot(S,np.linalg.inv(self.MVP))))
+
+                    else :
+                        th = -th
+                        Rx = np.array(
+                            [
+                                [1, 0, 0, 0],
+                                [0, np.cos(th), np.sin(th), 0],
+                                [0, -np.sin(th), np.cos(th), 0],
+                                [0, 0, 0, 1]
+                            ]
+                            ).astype(np.float32)
+                        self.__update_MVP(np.linalg.inv(np.dot(Rx, np.linalg.inv(self.MVP))))
+
+                case glfw.KEY_DOWN:
+                    if mods == glfw.MOD_SHIFT :
+                        S = np.eye(4).astype(np.float32)*0.9
+                        S[3,3] = 1                        
+                        self.__update_MVP(np.linalg.inv(np.dot(S, np.linalg.inv(self.MVP))))
+
+                    else :
+                        Rx = np.array(
+                            [
+                                [1, 0, 0, 0],
+                                [0, np.cos(th), np.sin(th), 0],
+                                [0, -np.sin(th), np.cos(th), 0],
+                                [0, 0, 0, 1]
+                            ]
+                            ).astype(np.float32)
+                        self.__update_MVP(np.linalg.inv(np.dot(Rx,np.linalg.inv(self.MVP))))
+
+                case glfw.KEY_LEFT :
+                    Ry = np.array(
+                        [
+                            [np.cos(th), 0, np.sin(th), 0],
+                            [0, 1, 0, 0],
+                            [-np.sin(th), 0, np.cos(th), 0],
+                            [0, 0, 0, 1]
+                        ]
+                        ).astype(np.float32)
+                    self.__update_MVP(np.linalg.inv(np.dot(Ry,np.linalg.inv(self.MVP))))
+
+                case glfw.KEY_RIGHT:
+                    th = -th
+                    Ry = np.array(
+                        [
+                            [np.cos(th), 0, np.sin(th), 0],
+                            [0, 1, 0, 0],
+                            [-np.sin(th), 0, np.cos(th), 0],
+                            [0, 0, 0, 1]
+                        ]
+                        ).astype(np.float32)
+                    self.__update_MVP(np.linalg.inv(np.dot(Ry,np.linalg.inv(self.MVP))))
+
+                case glfw.KEY_EQUAL :
+                    if mods == glfw.MOD_SHIFT :
+                        self.isovalue += 0.01;
+                        Log.info(self.isovalue)
+                case glfw.KEY_MINUS :
+                    self.isovalue -= 0.01;
+                    Log.info(self.isovalue)            
+
     def callback_mouse(self, window, btn, act, mods) :
         Log.debug("btn/act/mod : {0}/{1}/{2}".format(btn,act,mods))
         
-
     def callback_scroll(self, window, xoffset, yoffset) :
 
         pass
@@ -130,10 +224,13 @@ if __name__ == "__main__":
     Log.addHandler(hStreamLog)
 
     setting = {
-        "WIN_WIDTH" : 1024,
-        "WIN_HEIGHT" : 1024,
-        "FBO_WIDTH" : 1024,
-        "FBO_HEIGHT" : 1024,
+        "WIN_WIDTH" : 512,
+        "WIN_HEIGHT" : 512,
+        "RAY_DOMAIN" : [512,512],
+        "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_80_O.raw",
+        "VOLUE_DATA_DIM" : [80,80,80,1],
+        "VOLUE_DATA_TYPE" : np.float32,
+        "ISOVALUE" : 0.5
     }
 
     ctrl = Controller(setting)
