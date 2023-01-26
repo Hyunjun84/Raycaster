@@ -20,11 +20,11 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
 	float4 e;
 
     if(fov == 0) {
-        b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0, -100.0, 1.0); //[-1...1]^3
-        e = (float4)(b.xy, 100.0, 1.0);
+        b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -100.0f, 1.0f); //[-1...1]^3
+        e = (float4)(b.xy, 100.0f, 1.0f);
     } else {
-        b = (float4)(0, 0, -100.0, 1.0); //[-1...1]^3
-        e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0, 100.0, 1.0);
+        b = (float4)(0, 0, -1-sqrt(2.0f)/tan(fov*0.5f/180.0f*M_PI), 1.0f);
+        e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f);
     }
 
 	b = MDotV(MVP, b);

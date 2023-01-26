@@ -35,6 +35,7 @@ class Controller :
         self.MVP[3,3] = 1
         self.invMVP = np.linalg.inv(self.MVP)
         self.renderer.update_uniform(self.MVP)
+        self.fov = self.setting["FOV"]
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -85,7 +86,7 @@ class Controller :
     def update(self) :
         msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.invMVP, np.float32(setting["FOV"]))
+        evt1 = self.raycaster.genRay(self.invMVP, np.float32(self.fov))
         #self.raycaster.ray_dump()
         #exit(0)
         evt2 = self.raycaster.raycast(self.isovalue, self.deffered_buffer[0])
@@ -137,6 +138,15 @@ class Controller :
             th = np.pi/30
 
             match key :
+                case glfw.KEY_A :
+                    self.fov -= 10
+                    if self.fov<0 : self.fov = 0
+                    Log.info("FOV : {0}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
+                case glfw.KEY_S :
+                    self.fov += 10
+                    if self.fov>90 : self.fov = 90
+                    Log.info("FOV : {0}".format(self.fov))
+
                 case glfw.KEY_UP :
                     if mods == glfw.MOD_SHIFT :
                         S = np.eye(4).astype(np.float32)*1.1
