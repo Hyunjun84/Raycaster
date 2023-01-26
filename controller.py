@@ -16,9 +16,9 @@ class Controller :
         self.__init_cl__()
 
         self.isovalue = setting["ISOVALUE"]
-
         self.renderer = renderer.Renderer()
         gl_buffers = self.renderer.gen_deffered_textures(self.setting["RAY_DOMAIN"])
+
         flag = cl.mem_flags.READ_WRITE
         self.deffered_buffer = [cl.GLTexture(self.ctx, flag, GL_TEXTURE_2D, 0, buf, 2) for buf in gl_buffers]
 
@@ -67,7 +67,6 @@ class Controller :
 #        print(workarea)
 
 #        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
-
 
         if not self.wnd :
             glfw.terminate()
@@ -142,8 +141,7 @@ class Controller :
                     if mods == glfw.MOD_SHIFT :
                         S = np.eye(4).astype(np.float32)*1.1
                         S[3,3] = 1
-                        self.__update_MVP(np.linalg.inv(np.dot(S,np.linalg.inv(self.MVP))))
-
+                        self.__update_MVP(np.linalg.inv(np.dot(S, np.linalg.inv(self.MVP))))
                     else :
                         th = -th
                         Rx = np.array(
@@ -234,7 +232,9 @@ if __name__ == "__main__":
         "VOLUE_DATA_DIM" : [80,80,80,1],
         "VOLUE_DATA_TYPE" : np.float32,
         "ISOVALUE" : 0.5,
-        "SPLINE_KERNEL" : ["./kernel/cc6.cl", "./kernel/fcc_v2.cl", "./kernel/fcc_v3.cl"],
+        "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC":"./kernel/cc6.cl", 
+                           "Second Order FCC Voronoi-Spline":"./kernel/fcc_v2.cl", 
+                           "Third Order FCC Voronoi-Spline":"./kernel/fcc_v3.cl"},
     }
 
     ctrl = Controller(setting)

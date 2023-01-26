@@ -7,25 +7,24 @@ class Raycaster :
         self.ctx = ctx
         self.queue = queue
         self.prgs = []
-        self.current_prg_idx = 0
+        self.Log = logging.getLogger("Raycaster")
 
         with open('./kernel/raycaster.cl', 'r') as fp : src = fp.read()
-        for sp in splines :
+        for title, sp in splines.items() :
             with open(sp, 'r') as fp : 
                 kernel_src = src+fp.read()
                 prg = cl.Program(self.ctx, kernel_src)
                 prg.build(options=["-g",],devices=[devices[0],], cache_dir=None)
-                self.prgs.append(prg)
+                self.prgs.append((title, prg))
 
-        self.prg = self.prgs[self.current_prg_idx]
+        self.current_prg_idx = -1
+        self.nextKernel()
         self.setNumberofRays([8,8])
-        self.Log = logging.getLogger("Raycaster")
-
+        
     def nextKernel(self) :
         self.current_prg_idx = (self.current_prg_idx+1)%len(self.prgs)
-        self.prg = self.prgs[self.current_prg_idx]
-
-        self.Log.info("Current kernel : {0}".format(self.current_prg_idx))
+        self.prg = self.prgs[self.current_prg_idx][1]
+        self.Log.info("Current kernel : {0}".format(self.prgs[self.current_prg_idx][0]))
 
     def setNumberofRays(self, siz) :
         mf = cl.mem_flags
