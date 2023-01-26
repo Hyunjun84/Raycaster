@@ -22,7 +22,7 @@ class Controller :
         flag = cl.mem_flags.READ_WRITE
         self.deffered_buffer = [cl.GLTexture(self.ctx, flag, GL_TEXTURE_2D, 0, buf, 2) for buf in gl_buffers]
 
-        self.raycaster = raycaster.Raycaster(self.ctx, self.devices, self.queue)
+        self.raycaster = raycaster.Raycaster(self.ctx, self.devices, self.queue, setting["SPLINE_KERNEL"])
         self.raycaster.setNumberofRays(self.setting["RAY_DOMAIN"])
         self.raycaster.uploadVolumeData(self.setting["VOLUME_DATA_PATH"], 
                                         self.setting["VOLUE_DATA_DIM"], 
@@ -33,7 +33,6 @@ class Controller :
         self.MVP = np.eye(4).astype(np.float32)*0.75
         self.MVP[2,2] = -self.MVP[2,2]
         self.MVP[3,3] = 1
-        print(self.MVP)
         self.invMVP = np.linalg.inv(self.MVP)
         self.renderer.update_uniform(self.MVP)
 
@@ -63,11 +62,11 @@ class Controller :
                         "Renderer", 
                         None, None)
 
-        monitors = glfw.get_monitors()
-        workarea = glfw.get_monitor_workarea(monitors[1])
-        print(workarea)
+#        monitors = glfw.get_monitors()
+#        workarea = glfw.get_monitor_workarea(monitors[1])
+#        print(workarea)
 
-        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
+#        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
 
 
         if not self.wnd :
@@ -201,6 +200,10 @@ class Controller :
                     if mods == glfw.MOD_SHIFT :
                         self.isovalue += 0.01;
                         Log.info(self.isovalue)
+
+                case glfw.KEY_K :
+                    self.raycaster.nextKernel()
+
                 case glfw.KEY_MINUS :
                     self.isovalue -= 0.01;
                     Log.info(self.isovalue)            
@@ -230,7 +233,8 @@ if __name__ == "__main__":
         "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_80_O.raw",
         "VOLUE_DATA_DIM" : [80,80,80,1],
         "VOLUE_DATA_TYPE" : np.float32,
-        "ISOVALUE" : 0.5
+        "ISOVALUE" : 0.5,
+        "SPLINE_KERNEL" : ["./kernel/fcc_v2.cl", "./kernel/fcc_v3.cl"],
     }
 
     ctrl = Controller(setting)

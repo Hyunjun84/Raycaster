@@ -3,16 +3,30 @@ import pyopencl as cl
 import logging
 
 class Raycaster :
-    def __init__(self, ctx, devices, queue) :
+    def __init__(self, ctx, devices, queue, splines) :
         self.ctx = ctx
         self.queue = queue
-        with open('./kernel/raycaster.cl', 'r') as fp : src = fp.read()
-        self.prg = cl.Program(self.ctx, src)
-        self.prg.build(options=["-g",],devices=[devices[0],], cache_dir=None)
-        self.setNumberofRays([8,8])
+        self.prgs = []
+        self.current_prg_idx = 0
 
+        with open('./kernel/raycaster.cl', 'r') as fp : src = fp.read()
+        for sp in splines :
+            with open(sp, 'r') as fp : 
+                kernel_src = src+fp.read()
+                prg = cl.Program(self.ctx, kernel_src)
+                prg.build(options=["-g",],devices=[devices[0],], cache_dir=None)
+                self.prgs.append(prg)
+
+        self.prg = self.prgs[self.current_prg_idx]
+        self.setNumberofRays([8,8])
         self.Log = logging.getLogger("Raycaster")
-        
+
+    def nextKernel(self) :
+        self.current_prg_idx = (self.current_prg_idx+1)%len(self.prgs)
+        self.prg = self.prgs[self.current_prg_idx]
+
+        self.Log.info("Current kernel : {0}".format(self.current_prg_idx))
+
     def setNumberofRays(self, siz) :
         mf = cl.mem_flags
         self.dim_ray = siz
@@ -51,8 +65,8 @@ class Raycaster :
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
-            arg0=self.rays, 
-            arg1=MVP
+            arg0=self.rays,
+            arg1=MVP,
         )
 
     def raycast(self, iso, buf_pos) :
