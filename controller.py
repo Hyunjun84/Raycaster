@@ -234,7 +234,7 @@ if __name__ == "__main__":
         "VOLUE_DATA_DIM" : [80,80,80,1],
         "VOLUE_DATA_TYPE" : np.float32,
         "ISOVALUE" : 0.5,
-        "SPLINE_KERNEL" : ["./kernel/fcc_v2.cl", "./kernel/fcc_v3.cl"],
+        "SPLINE_KERNEL" : ["./kernel/cc6.cl", "./kernel/fcc_v2.cl", "./kernel/fcc_v3.cl"],
     }
 
     ctrl = Controller(setting)
