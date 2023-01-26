@@ -85,7 +85,7 @@ class Controller :
     def update(self) :
         msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.invMVP)
+        evt1 = self.raycaster.genRay(self.invMVP, np.float32(setting["FOV"]))
         #self.raycaster.ray_dump()
         #exit(0)
         evt2 = self.raycaster.raycast(self.isovalue, self.deffered_buffer[0])
@@ -235,6 +235,7 @@ if __name__ == "__main__":
         "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC":"./kernel/cc6.cl", 
                            "Second Order FCC Voronoi-Spline":"./kernel/fcc_v2.cl", 
                            "Third Order FCC Voronoi-Spline":"./kernel/fcc_v3.cl"},
+        "FOV" : 0,
     }
 
     ctrl = Controller(setting)

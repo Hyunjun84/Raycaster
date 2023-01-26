@@ -9,15 +9,23 @@ __inline float4 MDotV(float16 m, float4 v)
 	return (float4)(dot(m.s0123, v),dot(m.s4567, v), dot(m.s89ab, v), dot(m.scdef, v));
 }
 
-__kernel void genRay(__global float8* ray, float16 MVP)
+__kernel void genRay(__global float8* ray, float16 MVP, float fov)
 {
 	int2 idx = (int2)(get_global_id(0), get_global_id(1));
 	int2 sz  = (int2)(get_global_size(0), get_global_size(1));
 
 	int id = sz.x*idx.y+idx.x;
 
-	float4 b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0, -100.0, 1.0); //[-1...1]^3;
-	float4 e = (float4)(b.xy, 100.0, 1.0);
+	float4 b;
+	float4 e;
+
+    if(fov == 0) {
+        b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0, -100.0, 1.0); //[-1...1]^3
+        e = (float4)(b.xy, 100.0, 1.0);
+    } else {
+        b = (float4)(0, 0, -100.0, 1.0); //[-1...1]^3
+        e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0, 100.0, 1.0);
+    }
 
 	b = MDotV(MVP, b);
     e = MDotV(MVP, e);
@@ -90,7 +98,7 @@ __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image3d_
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
 
-    float delta = 0.2;
+    float delta = 0.1;
     float4 p = read_imagef(Position, sp2, id)*(float4)(convert_float3(dim.xyz-1), 1);
 
     if(p.w!=0){

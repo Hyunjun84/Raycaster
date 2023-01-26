@@ -59,13 +59,14 @@ class Raycaster :
         self.queue.finish()
         print(np.min(buf, axis=0), np.max(buf, axis=0))
 
-    def genRay(self, MVP) :
+    def genRay(self, MVP, fov) :
         return self.prg.genRay(
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=self.rays,
             arg1=MVP,
+            arg2=fov
         )
 
     def raycast(self, iso, buf_pos) :
