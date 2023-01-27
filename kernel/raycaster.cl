@@ -3,6 +3,7 @@ const sampler_t sp2 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILT
 const sampler_t sp3 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_LINEAR;
 
 __inline float eval(float3 p_in, __read_only image3d_t vol);
+__inline float3 eval_g(float3 p_in, __read_only image3d_t vol);
 
 __inline float4 MDotV(float16 m, float4 v) 
 {
@@ -93,25 +94,50 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     write_imagef(Position, id, val);
 }
 
-
 __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
-
-    float delta = 0.1;
     float4 p = read_imagef(Position, sp2, id)*(float4)(convert_float3(dim.xyz-1), 1);
 
+    float3 grad = (float3)(0);
+    #if 1
+    if(p.w!=0)  grad = eval_g(p.xyz, vol);
+    #else
     if(p.w!=0){
+        float delta = 0.1;
         float d011 = eval(p.xyz-(float3)(delta, 0, 0), vol);
         float d211 = eval(p.xyz+(float3)(delta, 0, 0), vol);
         float d101 = eval(p.xyz-(float3)(0, delta, 0), vol);
         float d121 = eval(p.xyz+(float3)(0, delta, 0), vol);
         float d110 = eval(p.xyz-(float3)(0, 0, delta), vol);
         float d112 = eval(p.xyz+(float3)(0, 0, delta), vol);
-        float4 grad = (float4)((float3)(d211-d011, d121-d101, d112-d110)/(2*delta), 1);
-
-        write_imagef(Gradient, id, grad);
+        grad = (float3)(d211-d011, d121-d101, d112-d110)/(2*delta);
     }
+
+    #endif
+
+    write_imagef(Gradient, id, (float4)(grad,1));
+}
+
+
+__kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
+{
+    int2 id = (int2)(get_global_id(0), get_global_id(1));
+    float4 p = read_imagef(Position, sp2, id)*(float4)(convert_float3(dim.xyz-1), 1);
+
+    float3 grad = (float3)(0);
+    if(p.w!=0){
+        float delta = 0.1;
+        float d011 = eval(p.xyz-(float3)(delta, 0, 0), vol);
+        float d211 = eval(p.xyz+(float3)(delta, 0, 0), vol);
+        float d101 = eval(p.xyz-(float3)(0, delta, 0), vol);
+        float d121 = eval(p.xyz+(float3)(0, delta, 0), vol);
+        float d110 = eval(p.xyz-(float3)(0, 0, delta), vol);
+        float d112 = eval(p.xyz+(float3)(0, 0, delta), vol);
+        grad = (float3)(d211-d011, d121-d101, d112-d110)/(2*delta);
+    }
+
+    write_imagef(Gradient, id, (float4)(grad,1));
 }
 
 __kernel void hessian(__global float8* dxx, __read_only image2d_t vol, __global float4* pos)
