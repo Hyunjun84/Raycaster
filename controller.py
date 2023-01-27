@@ -138,14 +138,6 @@ class Controller :
             th = np.pi/30
 
             match key :
-                case glfw.KEY_A :
-                    self.fov -= 10
-                    if self.fov<0 : self.fov = 0
-                    Log.info("FOV : {0}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
-                case glfw.KEY_S :
-                    self.fov += 10
-                    if self.fov>90 : self.fov = 90
-                    Log.info("FOV : {0}".format(self.fov))
 
                 case glfw.KEY_UP :
                     if mods == glfw.MOD_SHIFT :
@@ -220,8 +212,12 @@ class Controller :
         Log.debug("btn/act/mod : {0}/{1}/{2}".format(btn,act,mods))
         
     def callback_scroll(self, window, xoffset, yoffset) :
+        self.fov += yoffset
+        if self.fov<0 : self.fov = 0
+        if self.fov>90 : self.fov = 90
 
-        pass
+        Log.info("FOV : {0}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
+
 
 if __name__ == "__main__":
     Log = logging.getLogger("Raycaster")
@@ -238,8 +234,8 @@ if __name__ == "__main__":
         "WIN_WIDTH" : 512,
         "WIN_HEIGHT" : 512,
         "RAY_DOMAIN" : [512,512],
-        "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_80_O.raw",
-        "VOLUE_DATA_DIM" : [80,80,80,1],
+        "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_20_O.raw",
+        "VOLUE_DATA_DIM" : [20,20,20,1],
         "VOLUE_DATA_TYPE" : np.float32,
         "ISOVALUE" : 0.5,
         "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC":"./kernel/cc6.cl", 
