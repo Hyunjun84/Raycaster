@@ -241,7 +241,7 @@ if __name__ == "__main__":
         "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC":"./kernel/cc6.cl", 
                            "Second Order FCC Voronoi-Spline":"./kernel/fcc_v2.cl", 
                            "Third Order FCC Voronoi-Spline":"./kernel/fcc_v3.cl"},
-        "FOV" : 0,
+        "FOV" : 60,
     }
 
     ctrl = Controller(setting)

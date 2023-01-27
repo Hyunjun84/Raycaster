@@ -8,7 +8,7 @@ __inline int sgn(float x)
 
 __inline float eval(float3 p_in, __read_only image3d_t vol)
 {
-     // Find origin
+    // Find origin
     int3 org = convert_int3(round(p_in));
     if( (convert_int(org.x+org.y+org.z)&0x01) != 0 ) {
         float3 l = p_in-convert_float3(org);

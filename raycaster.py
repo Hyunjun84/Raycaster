@@ -14,7 +14,7 @@ class Raycaster :
             with open(sp, 'r') as fp : 
                 kernel_src = src+fp.read()
                 prg = cl.Program(self.ctx, kernel_src)
-                prg.build(options=["-g",],devices=[devices[0],], cache_dir=None)
+                prg.build(options=["",],devices=[devices[0],], cache_dir=None)
                 self.prgs.append((title, prg))
 
         self.current_prg_idx = -1

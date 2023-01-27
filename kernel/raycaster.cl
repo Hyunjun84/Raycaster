@@ -44,7 +44,7 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
         max(max(hit_yz.x, hit_zx.x), hit_xy.x),
         min(min(hit_yz.y, hit_zx.y), hit_xy.y));
    
-    if(any(isnan(bound)) || any(isinf(bound)) )
+    if(any(isnan(bound)) || any(isinf(bound)) || (bound.x > bound.y))
         bound = (float2)(0);
 
     ray[id] = (float8)(b.xyz+d.xyz*bound.x, 1, b.xyz+d.xyz*bound.y, 1);
