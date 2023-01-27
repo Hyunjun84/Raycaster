@@ -1,19 +1,24 @@
 
-#define SCALE_F 0.0625
+#define SCALE_F (0.041666667f)
+
+__inline int sgn(float x) 
+{
+    return convert_int(x>=0.0f)*2-1;
+}
 
 __inline float eval(float3 p_in, __read_only image3d_t vol)
 {
-    // Find origin
+     // Find origin
     int3 org = convert_int3(round(p_in));
     if( (convert_int(org.x+org.y+org.z)&0x01) != 0 ) {
-        float3 l = p_in-org+1e-7;
-        float3 a  = fabs(l);
-        if(a.x > a.y) {
-            if(a.x > a.z)   org.x += convert_int(sign(l.x));
-            else            org.z += convert_int(sign(l.z));
+        float3 l = p_in-convert_float3(org);
+        float3 ul = fabs(l);
+        if(ul.x > ul.y) {
+            if(ul.x > ul.z)   org.x += sgn(l.x);
+            else              org.z += sgn(l.z);
         } else {
-            if(a.y > a.z)   org.y += convert_int(sign(l.y));
-            else            org.z += convert_int(sign(l.z));
+            if(ul.y > ul.z)   org.y += sgn(l.y);
+            else              org.z += sgn(l.z);
         }
     }
     float3 p_local = p_in - convert_float3(org);    // local coordinates
@@ -36,7 +41,7 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
     int3 R = (int3)((1-dR[1])*(1-dR[2])*(1-dR[5]),
                     (1-dR[0])*   dR[2] *(1-dR[4]),
                        dR[0] *   dR[1] *(1-dR[3]));
-    R = dR[3]*dR[4]*dR[5] + R - R.yzx - R.zxy;
+    R += dR[3]*dR[4]*dR[5] - R.yzx - R.zxy;
     
     // Transform p_local into the `reference left coset' (Fig 2(a)) hit_zx the reflection computed above.
     // Same as R^-1*p_local (R is one of the reflection matrices defined above)
@@ -50,10 +55,21 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
     int3 dP = (int3)(convert_int(p_ref_R.y>=p_ref_R.x),    
                      convert_int(p_ref_R.z>=p_ref_R.x), 
                      convert_int(p_ref_R.z>=p_ref_R.y));
+
+    #if 0    
     dP = (int3)(dP.x+dP.y, dP.x-dP.z, dP.y+dP.z);
     int3 vecPx = (int3)(dP.x==0, dP.y==1, dP.z==2);
     int3 vecPy = (int3)(dP.x==1, dP.y==0, dP.z==1);
     int3 vecPz = (int3)(dP.x==2, dP.y==-1,dP.z==0);
+    #else
+    int idx_P = 2*(dP.x+dP.y)+dP.z;
+    int3 vecP1 = (int3)(convert_int(idx_P==0), convert_int(idx_P==4), convert_int(idx_P==3));
+    int3 vecP2 = (int3)(convert_int(idx_P==1), convert_int(idx_P==2), convert_int(idx_P==5));
+
+    int3 vecPx = vecP1+vecP2;
+    int3 vecPy = vecP1.zxy+vecP2.yzx;
+    int3 vecPz = vecP1.yzx+vecP2.zxy;
+    #endif
 
     
     // Compute the permutation matrix P from type_P.
@@ -64,7 +80,7 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
     // Note that mat3 is in column-major format.
 
     // Transform p_ref_R into the `reference tetrahedron' hit_zx multiplying P.
-    float4 p_ref = (float4)(p_ref_R, 1);
+    float3 p_ref;
 
     p_ref.x = dot(p_ref_R, convert_float3(vecPx));
     p_ref.y = dot(p_ref_R, convert_float3(vecPy));
