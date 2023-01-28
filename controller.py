@@ -111,7 +111,7 @@ class Controller :
             currentTime = glfw.get_time()
             deltaTime   = currentTime - lastTime
 
-            if(deltaTime >= 5.0) :
+            if(deltaTime >= 2.0) :
                 fps = frameCount/deltaTime
                 Log.info("{0:.2f} FPS.".format(fps))
                 glfw.set_window_title(self.wnd, "Renderer({0:.2f} fps)".format(fps))
@@ -138,7 +138,6 @@ class Controller :
             th = np.pi/30
 
             match key :
-
                 case glfw.KEY_UP :
                     if mods == glfw.MOD_SHIFT :
                         S = np.eye(4).astype(np.float32)*1.1

@@ -1,131 +1,91 @@
+#include "./kernel/fcc_v_common.cl"
 
 #define SCALE_F (0.000086806f)   // 1/11520
 #define SCALE_G (0.002604167f)   // 1/15336
 
-__inline int sgn(float x) 
+#define c0 c[0]
+#define c1 c[1]
+#define c2 c[2]
+#define c3 c[3]
+#define c4 c[4]
+#define c5 c[5]
+#define c6 c[6]
+#define c7 c[7]
+#define c8 c[8]
+#define c9 c[9]
+#define c10 c[10]
+#define c11 c[11]
+#define c12 c[12]
+#define c13 c[13]
+#define c14 c[14]
+#define c15 c[15]
+#define c16 c[16]
+#define c17 c[17]
+#define c18 c[18]
+#define c19 c[19]
+#define c20 c[20]
+#define c21 c[21]
+#define c22 c[22]
+#define c23 c[23]
+#define c24 c[24]
+#define c25 c[25]
+#define c26 c[26]
+
+__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, int4 P)
 {
-    return convert_int(x>=0.0f)*2-1;
+    // Fetch coefficients
+    int3 dir2x = 2*R*shuffle((int4)(1,0,0,0), P).xyz;
+    int3 dir2y = 2*R*shuffle((int4)(0,1,0,0), P).xyz;
+    int3 dir2z = 2*R*shuffle((int4)(0,0,1,0), P).xyz;
+
+
+    int3 offset = org;              c0 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 0, 0)
+    offset -= dir2z;                c15 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0,-2)
+    offset += (dir2x+dir2y)>>1;     c19 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1,-2)
+    offset += 2*dir2z;              c20 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 2)
+    offset -= (dir2x+dir2y)>>1;     c16 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0, 2)
+    offset -= (dir2y+dir2z);        c14 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0,-2, 0)
+    offset += 2*dir2y;              c17 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 2, 0)
+    offset += (dir2x-dir2z)>>1;     c21 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2,-1)
+    offset += dir2z;                c22 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2, 1)
+    offset -= dir2y;                c11 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0, 1)
+    offset -= dir2x;                c3 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0, 1)
+    offset -= dir2z;                c2 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0,-1)
+    offset += dir2x;                c10 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0,-1)
+    offset += (dir2y+dir2z)>>1;     c12 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 0)
+    offset -= dir2x;                c4 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 1, 0)
+    offset -= dir2y;                c1 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1,-1, 0)
+    offset += dir2x;                c9 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 1,-1, 0)
+    offset -= (dir2x+dir2z)>>1;     c5 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1,-1)
+    offset += dir2z;                c6 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1, 1)
+    offset += (dir2y-dir2z);        c7 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1,-1)
+    offset += dir2z;                c8 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1, 1)
+    offset += dir2x;                c26 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1, 1)
+    offset -= dir2z;                c25 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1,-1)
+    offset += (dir2z-dir2y);        c24 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1, 1)
+    offset -= dir2z;                c23 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1,-1)
+    offset += (dir2y+dir2z)>>1;     c18 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 0, 0)
+    offset -= 2*dir2x;              c13 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //(-2, 0, 0)
 }
 
 __inline float eval(float3 p_in, __read_only image3d_t vol)
 {
     // Find origin
-    int3 org = convert_int3(round(p_in));
-    if( (convert_int(org.x+org.y+org.z)&0x01) != 0 ) {
-        float3 l = p_in-convert_float3(org);
-        float3 ul = fabs(l);
-        if(ul.x > ul.y) {
-            if(ul.x > ul.z)   org.x += sgn(l.x);
-            else              org.z += sgn(l.z);
-        } else {
-            if(ul.y > ul.z)   org.y += sgn(l.y);
-            else              org.z += sgn(l.z);
-        }
-    }
+    int3 org = find_origin(p_in);
     float3 p_local = p_in - convert_float3(org);    // local coordinates
 
-    // computes the membership against the six knot planes intersecting the unit cube centered at the local origin
-    int dR[6] = {  
-        convert_int(p_local.z>=p_local.y),
-        convert_int(p_local.z>=p_local.x),
-        convert_int(p_local.y>=p_local.x),
-        convert_int(p_local.x>=-p_local.y),
-        convert_int(p_local.x>=-p_local.z),
-        convert_int(p_local.y>=-p_local.z)
-    };
+    int3 R = find_R(p_local);
+    p_local = convert_float3(R)*p_local;
 
-    // type_R: the `reflection transformation' which is one of four `even reflections'
-    // The reflection matrix R for each type:
-    // (0,0,0): [ 1, 0, 0] (0,1,1): [ 1, 0, 0] (1,0,1): [-1, 0, 0] (1,1,0): [-1, 0, 0]
-    //          [ 0, 1, 0]          [ 0,-1, 0]          [ 0, 1, 0]          [ 0,-1, 0]
-    //          [ 0, 0, 1]          [ 0, 0,-1]          [ 0, 0,-1]          [ 0, 0, 1]
-    int3 R = (int3)((1-dR[1])*(1-dR[2])*(1-dR[5]),
-                    (1-dR[0])*   dR[2] *(1-dR[4]),
-                       dR[0] *   dR[1] *(1-dR[3]));
-    R += dR[3]*dR[4]*dR[5] - R.yzx - R.zxy;
-    
-    // Transform p_local into the `reference left coset' (Fig 2(a)) hit_zx the reflection computed above.
-    // Same as R^-1*p_local (R is one of the reflection matrices defined above)
-    // Note that R^{-1}=R since R is symmetric & orthogonal.
-    float3  p_ref_R = convert_float3(R)*p_local;
+    int8 P = find_P(p_local);
+    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
 
-    // Compute the membership against the three knot planes intersecting the piece in Fig 2(a).
-    // Three knot planes with their normals (-1,1,0), (-1,0,1), and (0,-1,1), respectively.
-    // The input (p_ref_R) belong to one of the six tetrahedra in Fig 2(a)
-    // and each piece corresponds to one of the six permutation matrices P below.
-    int3 dP = (int3)(convert_int(p_ref_R.y>=p_ref_R.x),    
-                     convert_int(p_ref_R.z>=p_ref_R.x), 
-                     convert_int(p_ref_R.z>=p_ref_R.y));
-
-    #if 0    
-    dP = (int3)(dP.x+dP.y, dP.x-dP.z, dP.y+dP.z);
-    int3 vecPx = (int3)(dP.x==0, dP.y==1, dP.z==2);
-    int3 vecPy = (int3)(dP.x==1, dP.y==0, dP.z==1);
-    int3 vecPz = (int3)(dP.x==2, dP.y==-1,dP.z==0);
-    #else
-    int idx_P = 2*(dP.x+dP.y)+dP.z;
-    int3 vecP1 = (int3)(convert_int(idx_P==0), convert_int(idx_P==4), convert_int(idx_P==3));
-    int3 vecP2 = (int3)(convert_int(idx_P==1), convert_int(idx_P==2), convert_int(idx_P==5));
-
-    int3 vecPx = vecP1+vecP2;
-    int3 vecPy = vecP1.zxy+vecP2.yzx;
-    int3 vecPz = vecP1.yzx+vecP2.zxy;
-    #endif
-
-    
-    // Compute the permutation matrix P from type_P.
-    // (0,0,0):[1,0,0] (0,0,1):[1,0,0] (1,0,0):[0,1,0] (0,1,1):[0,0,1] (1,1,0):[0,1,0] (1,1,1):[0,0,1]
-    //         [0,1,0]         [0,0,1]         [1,0,0]         [1,0,0]         [0,0,1]         [0,1,0]
-    //         [0,0,1]         [0,1,0]         [0,0,1]         [0,1,0]         [1,0,0]         [1,0,0]
-    // For p_ref_R in one of the six tetrahedral pieces, P^{-1}*p_ref_R is inside the reference tetrahedron.
-    // Note that mat3 is in column-major format.
-
-    // Transform p_ref_R into the `reference tetrahedron' hit_zx multiplying P.
-    float3 p_ref;
-
-    p_ref.x = dot(p_ref_R, convert_float3(vecPx));
-    p_ref.y = dot(p_ref_R, convert_float3(vecPy));
-    p_ref.z = dot(p_ref_R, convert_float3(vecPz));
-    
-    // Fetch coefficients
-    int3 dir2x = 2*R*vecPx;
-    int3 dir2y = 2*R*vecPy;
-    int3 dir2z = 2*R*vecPz;
-
-    // We re-ordered the fetches such that
-    // the displacement of adjacent fetches are axis-aligned.
-    // Therefore, we can move to the next coefficient with low computational overhead.
-    int3 offset = org;              float c0 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 0, 0)
-    offset -= dir2z;                float c15 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0,-2)
-    offset += (dir2x+dir2y)>>1;     float c19 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1,-2)
-    offset += 2*dir2z;              float c20 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 2)
-    offset -= (dir2x+dir2y)>>1;     float c16 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0, 2)
-    offset -= (dir2y+dir2z);        float c14 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0,-2, 0)
-    offset += 2*dir2y;              float c17 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 2, 0)
-    offset += (dir2x-dir2z)>>1;     float c21 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2,-1)
-    offset += dir2z;                float c22 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2, 1)
-    offset -= dir2y;                float c11 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0, 1)
-    offset -= dir2x;                float c3 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0, 1)
-    offset -= dir2z;                float c2 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0,-1)
-    offset += dir2x;                float c10 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0,-1)
-    offset += (dir2y+dir2z)>>1;     float c12 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 0)
-    offset -= dir2x;                float c4 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 1, 0)
-    offset -= dir2y;                float c1 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1,-1, 0)
-    offset += dir2x;                float c9 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 1,-1, 0)
-    offset -= (dir2x+dir2z)>>1;     float c5 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1,-1)
-    offset += dir2z;                float c6 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1, 1)
-    offset += (dir2y-dir2z);        float c7 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1,-1)
-    offset += dir2z;                float c8 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1, 1)
-    offset += dir2x;                float c26 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1, 1)
-    offset -= dir2z;                float c25 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1,-1)
-    offset += (dir2z-dir2y);        float c24 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1, 1)
-    offset -= dir2z;                float c23 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1,-1)
-    offset += (dir2y+dir2z)>>1;     float c18 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 0, 0)
-    offset -= 2*dir2x;              float c13 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //(-2, 0, 0)
+    float c[27];
+    fetch_coefficients(c, vol, org, R, P.hi);
 
     // Evaluation
     float val = 0;
-    float3 X = p_ref;
+    float3 X = p_local;
     float3 X2 = X*X;
     float3 X3 = X2*X;
     float3 X4 = X3*X;
@@ -229,124 +189,22 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
 
 __inline float3 eval_g(float3 p_in, __read_only image3d_t vol)
 {
-       // Find origin
-    int3 org = convert_int3(round(p_in));
-    if( (convert_int(org.x+org.y+org.z)&0x01) != 0 ) {
-        float3 l = p_in-convert_float3(org);
-        float3 ul = fabs(l);
-        if(ul.x > ul.y) {
-            if(ul.x > ul.z)   org.x += sgn(l.x);
-            else              org.z += sgn(l.z);
-        } else {
-            if(ul.y > ul.z)   org.y += sgn(l.y);
-            else              org.z += sgn(l.z);
-        }
-    }
+    // Find origin
+    int3 org = find_origin(p_in);
     float3 p_local = p_in - convert_float3(org);    // local coordinates
 
-    // computes the membership against the six knot planes intersecting the unit cube centered at the local origin
-    int dR[6] = {  
-        convert_int(p_local.z>=p_local.y),
-        convert_int(p_local.z>=p_local.x),
-        convert_int(p_local.y>=p_local.x),
-        convert_int(p_local.x>=-p_local.y),
-        convert_int(p_local.x>=-p_local.z),
-        convert_int(p_local.y>=-p_local.z)
-    };
+    int3 R = find_R(p_local);
+    p_local = convert_float3(R)*p_local;
 
-    // type_R: the `reflection transformation' which is one of four `even reflections'
-    // The reflection matrix R for each type:
-    // (0,0,0): [ 1, 0, 0] (0,1,1): [ 1, 0, 0] (1,0,1): [-1, 0, 0] (1,1,0): [-1, 0, 0]
-    //          [ 0, 1, 0]          [ 0,-1, 0]          [ 0, 1, 0]          [ 0,-1, 0]
-    //          [ 0, 0, 1]          [ 0, 0,-1]          [ 0, 0,-1]          [ 0, 0, 1]
-    int3 R = (int3)((1-dR[1])*(1-dR[2])*(1-dR[5]),
-                    (1-dR[0])*   dR[2] *(1-dR[4]),
-                       dR[0] *   dR[1] *(1-dR[3]));
-    R += dR[3]*dR[4]*dR[5] - R.yzx - R.zxy;
-    
-    // Transform p_local into the `reference left coset' (Fig 2(a)) hit_zx the reflection computed above.
-    // Same as R^-1*p_local (R is one of the reflection matrices defined above)
-    // Note that R^{-1}=R since R is symmetric & orthogonal.
-    float3  p_ref_R = convert_float3(R)*p_local;
+    int8 P = find_P(p_local);
+    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
 
-    // Compute the membership against the three knot planes intersecting the piece in Fig 2(a).
-    // Three knot planes with their normals (-1,1,0), (-1,0,1), and (0,-1,1), respectively.
-    // The input (p_ref_R) belong to one of the six tetrahedra in Fig 2(a)
-    // and each piece corresponds to one of the six permutation matrices P below.
-    int3 dP = (int3)(convert_int(p_ref_R.y>=p_ref_R.x),    
-                     convert_int(p_ref_R.z>=p_ref_R.x), 
-                     convert_int(p_ref_R.z>=p_ref_R.y));
-
-    #if 0    
-    dP = (int3)(dP.x+dP.y, dP.x-dP.z, dP.y+dP.z);
-    int3 vecPx = (int3)(dP.x==0, dP.y==1, dP.z==2);
-    int3 vecPy = (int3)(dP.x==1, dP.y==0, dP.z==1);
-    int3 vecPz = (int3)(dP.x==2, dP.y==-1,dP.z==0);
-    #else
-    int idx_P = 2*(dP.x+dP.y)+dP.z;
-    int3 vecP1 = (int3)(convert_int(idx_P==0), convert_int(idx_P==4), convert_int(idx_P==3));
-    int3 vecP2 = (int3)(convert_int(idx_P==1), convert_int(idx_P==2), convert_int(idx_P==5));
-
-    int3 vecPx = vecP1+vecP2;
-    int3 vecPy = vecP1.zxy+vecP2.yzx;
-    int3 vecPz = vecP1.yzx+vecP2.zxy;
-    #endif
-
-    
-    // Compute the permutation matrix P from type_P.
-    // (0,0,0):[1,0,0] (0,0,1):[1,0,0] (1,0,0):[0,1,0] (0,1,1):[0,0,1] (1,1,0):[0,1,0] (1,1,1):[0,0,1]
-    //         [0,1,0]         [0,0,1]         [1,0,0]         [1,0,0]         [0,0,1]         [0,1,0]
-    //         [0,0,1]         [0,1,0]         [0,0,1]         [0,1,0]         [1,0,0]         [1,0,0]
-    // For p_ref_R in one of the six tetrahedral pieces, P^{-1}*p_ref_R is inside the reference tetrahedron.
-    // Note that mat3 is in column-major format.
-
-    // Transform p_ref_R into the `reference tetrahedron' hit_zx multiplying P.
-    float3 p_ref;
-
-    p_ref.x = dot(p_ref_R, convert_float3(vecPx));
-    p_ref.y = dot(p_ref_R, convert_float3(vecPy));
-    p_ref.z = dot(p_ref_R, convert_float3(vecPz));
-    
-    // Fetch coefficients
-    int3 dir2x = 2*R*vecPx;
-    int3 dir2y = 2*R*vecPy;
-    int3 dir2z = 2*R*vecPz;
-
-    // We re-ordered the fetches such that
-    // the displacement of adjacent fetches are axis-aligned.
-    // Therefore, we can move to the next coefficient with low computational overhead.
-    int3 offset = org;              float c0 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 0, 0)
-    offset -= dir2z;                float c15 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0,-2)
-    offset += (dir2x+dir2y)>>1;     float c19 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1,-2)
-    offset += 2*dir2z;              float c20 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 2)
-    offset -= (dir2x+dir2y)>>1;     float c16 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 0, 2)
-    offset -= (dir2y+dir2z);        float c14 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0,-2, 0)
-    offset += 2*dir2y;              float c17 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 0, 2, 0)
-    offset += (dir2x-dir2z)>>1;     float c21 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2,-1)
-    offset += dir2z;                float c22 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 2, 1)
-    offset -= dir2y;                float c11 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0, 1)
-    offset -= dir2x;                float c3 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0, 1)
-    offset -= dir2z;                float c2 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 0,-1)
-    offset += dir2x;                float c10 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 0,-1)
-    offset += (dir2y+dir2z)>>1;     float c12 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 1, 1, 0)
-    offset -= dir2x;                float c4 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1, 1, 0)
-    offset -= dir2y;                float c1 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //(-1,-1, 0)
-    offset += dir2x;                float c9 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 1,-1, 0)
-    offset -= (dir2x+dir2z)>>1;     float c5 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1,-1)
-    offset += dir2z;                float c6 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0,-1, 1)
-    offset += (dir2y-dir2z);        float c7 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1,-1)
-    offset += dir2z;                float c8 = read_imagef(vol, sp2, (int4)(offset, 1)).r;  //( 0, 1, 1)
-    offset += dir2x;                float c26 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1, 1)
-    offset -= dir2z;                float c25 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 1,-1)
-    offset += (dir2z-dir2y);        float c24 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1, 1)
-    offset -= dir2z;                float c23 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2,-1,-1)
-    offset += (dir2y+dir2z)>>1;     float c18 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //( 2, 0, 0)
-    offset -= 2*dir2x;              float c13 = read_imagef(vol, sp2, (int4)(offset, 1)).r; //(-2, 0, 0)
+    float c[27];
+    fetch_coefficients(c, vol, org, R, P.hi);
 
     // Evaluation
-    
     float3 d = (float3)(0);
-    float3 X = p_ref.xyz;
+    float3 X = p_local;
     float3 X2 = X*X;
     float3 X3 = X2*X;
     float3 X4 = X3*X;
@@ -519,13 +377,10 @@ __inline float3 eval_g(float3 p_in, __read_only image3d_t vol)
                  ((c2-c3+c5-c6+c7-c8+c10-c11)+2*(-c15+c16))*X2.z);
     d.z +=  480*(((c2-c3-c10+c11))*X.x+
                  ((c5-c6-c7+c8))*X.y);
-
+    
     // [dx dy dz]^T_{\pi_n} = R_n*P_n*[dx dy dz]^T_{\pi_0}
-    d = (float3)(dot(convert_float3((int3)(vecPx.x, vecPy.x, vecPz.x)), d), 
-                 dot(convert_float3((int3)(vecPx.y, vecPy.y, vecPz.y)), d), 
-                 dot(convert_float3((int3)(vecPx.z, vecPy.z, vecPz.z)), d));
+    d = shuffle((float4)(d,1), P.hi).xyz;
     d *= convert_float3(R);
-
 
     return d*SCALE_G;
 }

@@ -210,7 +210,111 @@ float3 eval_G_expr_blue(float* c, float4 u1, float4 u2)
     return u1.x*g;
 }
 
+__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, int3 vecPx, int3 vecPy, int3 vecPz)
+{
+    int3 dirx = R*vecPx;
+    int3 diry = R*vecPy;
+    int3 dirz = R*vecPz;
 
+    int3 offset = org;
+
+    c10 = read_imagef(vol, sp2, (int4)(offset,1)).r; //( 0, 0, 0)
+    offset += dirx;
+    c23 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirz;
+    c22 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c33 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirz;
+    c34 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -diry;
+    c32 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c20 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirz;
+    c19 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c6 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirz;
+    c7 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c0 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += diry;
+    c2 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirz;
+    c1 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c9 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += diry;
+    c13 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c26 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirz;
+    c27 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c36 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -3*dirx;
+    c4 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c14 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += diry;
+    c17 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c30 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirz;
+    c31 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c18 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -diry;
+    c15 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c5 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -diry;
+    c3 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c11 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -diry;
+    c8 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c21 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += diry;
+    c24 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c35 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += diry;
+    c37 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c28 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirz;
+    c29 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -dirx;
+    c16 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += -diry;
+    c12 = read_imagef(vol, sp2, (int4)(offset,1)).r;
+    offset += dirx;
+    c25 = read_imagef(vol, sp2, (int4)(offset,1)).r;  
+}
+
+
+__inline float4 to_barycentric(int type_tet, float3 p)
+{
+    return     convert_float(type_tet==TYPE_BLUE)*2.0f*
+                (float4)( p.x+p.y+p.z-1.0f,
+                             -p.y    +0.5f,
+                                 -p.z+0.5f,
+                         -p.x        +0.5f) +
+               convert_float(type_tet==TYPE_GREEN)*
+                (float4)(-p.x-p.y-p.z+1.0f,
+                          p.x-p.y+p.z     ,
+                          p.x+p.y-p.z     ,
+                         -p.x+p.y+p.z     ) +
+               convert_float(type_tet==TYPE_RED)*2.0f*
+                (float4)(-p.x        +0.5f,
+                                  p.z     ,
+                              p.y         ,
+                          p.x-p.y-p.z     );    
+
+}
 
 __inline float eval(float3 p_in,  __read_only image3d_t vol)
 {
@@ -239,119 +343,23 @@ __inline float eval(float3 p_in,  __read_only image3d_t vol)
     int3 vecPy = vecPx.zxy;
     int3 vecPz = vecPx.yzx;
 
-    float4 p_ref;
-    p_ref.x = dot(convert_float3(vecPx), p_cube);
-    p_ref.y = dot(convert_float3(vecPy), p_cube);
-    p_ref.z = dot(convert_float3(vecPz), p_cube);
-    p_ref.w = 1;
-    
-    float4 u1 = convert_float(type_tet==TYPE_BLUE)*2.0f*
-                (float4)( p_ref.x+p_ref.y+p_ref.z-1.0f,
-                                 -p_ref.y        +0.5f,
-                                         -p_ref.z+0.5f,
-                         -p_ref.x                +0.5f) +
-               convert_float(type_tet==TYPE_GREEN)*
-                (float4)(-p_ref.x-p_ref.y-p_ref.z    +1.0f,
-                          p_ref.x-p_ref.y+p_ref.z      ,
-                          p_ref.x+p_ref.y-p_ref.z      ,
-                         -p_ref.x+p_ref.y+p_ref.z      ) +
-               convert_float(type_tet==TYPE_RED)*2.0f*
-                (float4)(-p_ref.x                +0.5f,
-                                          p_ref.z    ,
-                                  p_ref.y            ,
-                          p_ref.x-p_ref.y-p_ref.z    );    
+    float3 p_ref = p_cube;
+    if(type_P==1) p_ref = p_ref.yzx;
+    else if(type_P==2) p_ref= p_ref.zxy;
+
+    float c[38];
+    fetch_coefficients(c, vol, org, R, vecPx, vecPy, vecPz);
+
+    float4 u1 = to_barycentric(type_tet, p_ref);
     float4 u2 = u1*u1;
     float4 u3 = u2*u1;
-
-    int3 dirx = R*vecPx;
-    int3 diry = R*vecPy;
-    int3 dirz = R*vecPz;
-
-    int3 offset = org;
-    float c[38];
-    c10 = read_imagef(vol, sp2, (int4)(offset,1)).r; //( 0, 0, 0)
-    offset += dirx;
-    c23 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c22 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c33 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c34 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c32 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c20 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c19 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c6 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c7 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c0 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c2 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c1 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c9 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c13 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c26 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c27 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c36 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -3*dirx;
-    c4 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c14 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c17 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c30 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c31 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c18 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c15 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c5 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c3 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c11 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c8 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c21 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c24 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c35 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c37 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c28 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c29 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c16 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c12 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c25 = read_imagef(vol, sp2, (int4)(offset,1)).r;  
-
     float val = eval_M_expr_rgb(c, u1, u2, u3);
 
-    if(type_tet==TYPE_RED) val += eval_M_expr_red(c, u1, u2, u3);
-    else                   val += eval_M_expr_gb(c, u1, u2, u3);
-    if(type_tet == TYPE_GREEN) val += eval_M_expr_green(c, u1, u2, u3);
-    if(type_tet == TYPE_BLUE) val += eval_M_expr_blue(c, u1, u2, u3);
-    else                      val += eval_M_expr_rg(c, u1, u2, u3);
+    if(type_tet==TYPE_RED)   val += eval_M_expr_red(c, u1, u2, u3);
+    else                     val += eval_M_expr_gb(c, u1, u2, u3);
+    if(type_tet==TYPE_GREEN) val += eval_M_expr_green(c, u1, u2, u3);
+    if(type_tet==TYPE_BLUE)  val += eval_M_expr_blue(c, u1, u2, u3);
+    else                     val += eval_M_expr_rg(c, u1, u2, u3);
     return DENOM_M*val;
 }
 
@@ -378,127 +386,31 @@ __inline float3 eval_g(float3 p_in,  __read_only image3d_t vol)
     int type_tet = bit.x+bit.y+bit.z-bit.w+1;
     int type_P = 2*bit.z + bit.y; // one of three even permutations
 
+
     int3 vecPx = (int3)(type_P==0, type_P==1, type_P==2);
     int3 vecPy = vecPx.zxy;
     int3 vecPz = vecPx.yzx;
 
-    float4 p_ref;
-    p_ref.x = dot(convert_float3(vecPx), p_cube);
-    p_ref.y = dot(convert_float3(vecPy), p_cube);
-    p_ref.z = dot(convert_float3(vecPz), p_cube);
-    p_ref.w = 1;
-    
-    float4 u1 = convert_float(type_tet==TYPE_BLUE)*2.0f*
-                (float4)( p_ref.x+p_ref.y+p_ref.z-1.0f,
-                                 -p_ref.y        +0.5f,
-                                         -p_ref.z+0.5f,
-                         -p_ref.x                +0.5f) +
-               convert_float(type_tet==TYPE_GREEN)*
-                (float4)(-p_ref.x-p_ref.y-p_ref.z    +1.0f,
-                          p_ref.x-p_ref.y+p_ref.z      ,
-                          p_ref.x+p_ref.y-p_ref.z      ,
-                         -p_ref.x+p_ref.y+p_ref.z      ) +
-               convert_float(type_tet==TYPE_RED)*2.0f*
-                (float4)(-p_ref.x                +0.5f,
-                                          p_ref.z    ,
-                                  p_ref.y            ,
-                          p_ref.x-p_ref.y-p_ref.z    );    
-    float4 u2 = u1*u1;
-    float4 u3 = u2*u1;
+    float3 p_ref = p_cube;
+    if(type_P==1) p_ref = p_ref.yzx;
+    else if(type_P==2) p_ref= p_ref.zxy;    
 
-    int3 dirx = R*vecPx;
-    int3 diry = R*vecPy;
-    int3 dirz = R*vecPz;
-
-    int3 offset = org;
     float c[38];
-    c10 = read_imagef(vol, sp2, (int4)(offset,1)).r; //( 0, 0, 0)
-    offset += dirx;
-    c23 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c22 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c33 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c34 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c32 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c20 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c19 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c6 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c7 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c0 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c2 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirz;
-    c1 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c9 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c13 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c26 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c27 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c36 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -3*dirx;
-    c4 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c14 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c17 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c30 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c31 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c18 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c15 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c5 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c3 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c11 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c8 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c21 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c24 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c35 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += diry;
-    c37 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c28 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirz;
-    c29 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -dirx;
-    c16 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += -diry;
-    c12 = read_imagef(vol, sp2, (int4)(offset,1)).r;
-    offset += dirx;
-    c25 = read_imagef(vol, sp2, (int4)(offset,1)).r;  
+    fetch_coefficients(c, vol, org, R, vecPx, vecPy, vecPz);
+
+    float4 u1 = to_barycentric(type_tet, p_ref);
+    float4 u2 = u1*u1;
 
     float3 g = eval_G_expr_rgb(c, u1, u2);
    
     if(type_tet==TYPE_RED)     g += eval_G_expr_red(c, u1, u2);
     else                       g += eval_G_expr_gb(c, u1, u2);
-    if(type_tet == TYPE_GREEN) g += eval_G_expr_green(c, u1, u2);
-    if(type_tet == TYPE_BLUE)  g += eval_G_expr_blue(c, u1, u2);
+    if(type_tet==TYPE_GREEN)   g += eval_G_expr_green(c, u1, u2);
+    if(type_tet==TYPE_BLUE)    g += eval_G_expr_blue(c, u1, u2);
     else                       g += eval_G_expr_rg(c, u1, u2);
 
     if(type_P == 1) g = g.zxy;
     else if(type_P == 2) g = g.yzx;
-
     g *= convert_float3(R);
     
     return DENOM_G*g;
