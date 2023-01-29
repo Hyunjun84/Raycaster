@@ -7,6 +7,7 @@ import numpy as np
 
 import raycaster
 import renderer
+import matrix
 
 MAX_ITER = 2**30
 class Controller :
@@ -30,10 +31,11 @@ class Controller :
 
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.callback_resize(self.wnd, w, h)
-        self.MVP = np.eye(4).astype(np.float32)*0.75
-        self.MVP[2,2] = -self.MVP[2,2]
-        self.MVP[3,3] = 1
-        self.invMVP = np.linalg.inv(self.MVP)
+        View = np.eye(4).astype(np.float32)*0.75
+        View[2,2] = -View[2,2]
+        View[3][3] = 1
+
+        self.__update_MVP(np.eye(4).astype(np.float32), View)
         self.renderer.update_uniform(self.MVP)
         self.fov = self.setting["FOV"]
 
@@ -80,6 +82,7 @@ class Controller :
         glfw.set_key_callback(self.wnd, self.callback_keyboard)
         glfw.set_mouse_button_callback(self.wnd, self.callback_mouse)
         glfw.set_scroll_callback(self.wnd, self.callback_scroll)
+        glfw.set_cursor_pos_callback(self.wnd, self.callback_cursor_position)
 
         return True
 
@@ -125,8 +128,10 @@ class Controller :
         self.current_fbo_size = glfw.get_framebuffer_size(window)
         glViewport(0, 0, self.current_fbo_size[0], self.current_fbo_size[1])
 
-    def __update_MVP(self, MVP) :
-        self.MVP = MVP
+    def __update_MVP(self, M, V) :
+        self.MVP = np.dot(M,V)
+        self.Model = M
+        self.View = V
         self.invMVP = np.linalg.inv(self.MVP)
         self.renderer.update_uniform(self.MVP)
 
@@ -138,63 +143,6 @@ class Controller :
             th = np.pi/30
 
             match key :
-                case glfw.KEY_UP :
-                    if mods == glfw.MOD_SHIFT :
-                        S = np.eye(4).astype(np.float32)*1.1
-                        S[3,3] = 1
-                        self.__update_MVP(np.linalg.inv(np.dot(S, np.linalg.inv(self.MVP))))
-                    else :
-                        th = -th
-                        Rx = np.array(
-                            [
-                                [1, 0, 0, 0],
-                                [0, np.cos(th), np.sin(th), 0],
-                                [0, -np.sin(th), np.cos(th), 0],
-                                [0, 0, 0, 1]
-                            ]
-                            ).astype(np.float32)
-                        self.__update_MVP(np.linalg.inv(np.dot(Rx, np.linalg.inv(self.MVP))))
-
-                case glfw.KEY_DOWN:
-                    if mods == glfw.MOD_SHIFT :
-                        S = np.eye(4).astype(np.float32)*0.9
-                        S[3,3] = 1                        
-                        self.__update_MVP(np.linalg.inv(np.dot(S, np.linalg.inv(self.MVP))))
-
-                    else :
-                        Rx = np.array(
-                            [
-                                [1, 0, 0, 0],
-                                [0, np.cos(th), np.sin(th), 0],
-                                [0, -np.sin(th), np.cos(th), 0],
-                                [0, 0, 0, 1]
-                            ]
-                            ).astype(np.float32)
-                        self.__update_MVP(np.linalg.inv(np.dot(Rx,np.linalg.inv(self.MVP))))
-
-                case glfw.KEY_LEFT :
-                    Ry = np.array(
-                        [
-                            [np.cos(th), 0, np.sin(th), 0],
-                            [0, 1, 0, 0],
-                            [-np.sin(th), 0, np.cos(th), 0],
-                            [0, 0, 0, 1]
-                        ]
-                        ).astype(np.float32)
-                    self.__update_MVP(np.linalg.inv(np.dot(Ry,np.linalg.inv(self.MVP))))
-
-                case glfw.KEY_RIGHT:
-                    th = -th
-                    Ry = np.array(
-                        [
-                            [np.cos(th), 0, np.sin(th), 0],
-                            [0, 1, 0, 0],
-                            [-np.sin(th), 0, np.cos(th), 0],
-                            [0, 0, 0, 1]
-                        ]
-                        ).astype(np.float32)
-                    self.__update_MVP(np.linalg.inv(np.dot(Ry,np.linalg.inv(self.MVP))))
-
                 case glfw.KEY_EQUAL :
                     if mods == glfw.MOD_SHIFT :
                         self.isovalue += 0.01;
@@ -207,8 +155,61 @@ class Controller :
                     self.isovalue -= 0.01;
                     Log.info(self.isovalue)            
 
+    def __to_arcball_coordinate(self, pos) :
+        pos = ((pos[0]-256)/256, (256-pos[1])/256)
+        return (pos[0], pos[1], (2**2-(pos[0]**2 + pos[1]**2))**0.5);
+    
+    def __rotate_arcball(self, last_pos, cur_pos) :
+        axis = np.cross(last_pos, cur_pos)
+        axis = axis / np.linalg.norm(axis)
+        th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
+        if np.any(np.isnan(axis)) or np.isnan(th) :
+            return np.eye(4).astype(np.float32)
+        return matrix.rotate(axis, th)
+
     def callback_mouse(self, window, btn, act, mods) :
+        if btn == glfw.MOUSE_BUTTON_LEFT :
+            if(act == glfw.PRESS) :
+                self.__last_cursor_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
+                self.__last_Model = self.Model
+                
+            if(act == glfw.RELEASE) :
+                try :
+                    current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
+                    M = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
+                    self.__update_MVP(np.dot(M, self.__last_Model), self.View )
+                except :
+                    print("last cursor position is not defined.")
+
+
+        elif btn == glfw.MOUSE_BUTTON_RIGHT :
+            if(act == glfw.PRESS) :
+                self.__last_cursor_pos = glfw.get_cursor_pos(window)
+                self.__last_View = self.View
+            
+            if(act == glfw.RELEASE) :
+                try :
+                    current_pos = glfw.get_cursor_pos(window)
+                    scale = self.__last_cursor_pos[1]/current_pos[1]
+                    V = matrix.scale(scale, scale, scale)
+                    self.__update_MVP(self.Model, np.dot(self.__last_View, V))
+                except :
+                    print("last cursor position is not defined.")
+
         Log.debug("btn/act/mod : {0}/{1}/{2}".format(btn,act,mods))
+
+    def callback_cursor_position(self, window, xpos, ypos) :
+        if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS :
+            current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
+            M = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
+            self.__update_MVP(np.dot(M, self.__last_Model), self.View )
+
+        if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS :
+            current_pos = glfw.get_cursor_pos(window)
+            scale = self.__last_cursor_pos[1]/current_pos[1]
+            V = matrix.scale(scale, scale, scale)
+            self.__update_MVP(self.Model, np.dot(self.__last_View, V))
+
         
     def callback_scroll(self, window, xoffset, yoffset) :
         self.fov += yoffset
