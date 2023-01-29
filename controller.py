@@ -67,8 +67,6 @@ class Controller :
 
 #        monitors = glfw.get_monitors()
 #        workarea = glfw.get_monitor_workarea(monitors[1])
-#        print(workarea)
-
 #        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
 
         if not self.wnd :
@@ -179,7 +177,7 @@ class Controller :
                     M = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
                     self.__update_MVP(np.dot(M, self.__last_Model), self.View )
                 except :
-                    print("last cursor position is not defined.")
+                    Log.info("last cursor position is not defined.")
 
 
         elif btn == glfw.MOUSE_BUTTON_RIGHT :
@@ -194,9 +192,9 @@ class Controller :
                     V = matrix.scale(scale, scale, scale)
                     self.__update_MVP(self.Model, np.dot(self.__last_View, V))
                 except :
-                    print("last cursor position is not defined.")
+                    Log.info("last cursor position is not defined.")
 
-        Log.debug("btn/act/mod : {0}/{1}/{2}".format(btn,act,mods))
+#        Log.debug("btn/act/mod : {0}/{1}/{2}".format(btn,act,mods))
 
     def callback_cursor_position(self, window, xpos, ypos) :
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS :

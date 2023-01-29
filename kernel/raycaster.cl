@@ -51,7 +51,7 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
     ray[id] = (float8)(b.xyz+d.xyz*bound.x, 1, b.xyz+d.xyz*bound.y, 1);
 }
 
-__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, int4 dim, float level, __global int2* buf)
+__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, int4 dim, float level)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
     int2 sz  = (int2)(get_global_size(0), get_global_size(1));

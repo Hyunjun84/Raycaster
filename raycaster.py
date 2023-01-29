@@ -30,8 +30,7 @@ class Raycaster :
         mf = cl.mem_flags
         self.dim_ray = siz
         self.rays = cl.Buffer(self.ctx, mf.READ_WRITE, np.prod(siz)*8*4)
-        self.temp = cl.Buffer(self.ctx, mf.READ_WRITE, np.prod(siz)*2*4)
-        
+
     def uploadVolumeData(self, FILE, dim, typ) :
         self.data = np.fromfile(FILE, dtype=typ).astype(np.float32)
         self.dim = dim
@@ -43,7 +42,7 @@ class Raycaster :
         mf = cl.mem_flags
         fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
         print(self.data)
-        self.d_data = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.dim[:3], hostbuf=self.data)
+        self.d_volume = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.dim[:3], hostbuf=self.data)
 
     def ray_dump(self) :
         buf = np.zeros([512*512,8], dtype=np.float32)
@@ -75,12 +74,11 @@ class Raycaster :
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=buf_pos,
-            arg1=self.d_data,
+            arg1=self.d_volume,
             arg2=self.rays,
             arg3=np.float32([1,1,1,1]),
             arg4=np.int32(self.dim),
             arg5=np.float32(iso),
-            arg6=self.temp
         )
 
     def evalGradient(self, buf_pos, buf_grad) :
@@ -89,7 +87,7 @@ class Raycaster :
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=buf_grad, 
-            arg1=self.d_data,
+            arg1=self.d_volume,
             arg2=buf_pos,
             arg3=np.int32(self.dim))
 
