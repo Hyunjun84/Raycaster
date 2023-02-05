@@ -1,6 +1,4 @@
-const sampler_t sp = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_CLAMP | CLK_FILTER_LINEAR;
-const sampler_t sp2 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
-const sampler_t sp3 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_LINEAR;
+#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
 #ifndef M_PI
 # define M_PI 3.141592653589793115998
@@ -9,6 +7,8 @@ const sampler_t sp3 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILT
 #ifndef M_PI_F
 # define M_PI_F 3.14159274101257f
 #endif
+
+const sampler_t sp = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
 __inline float eval(float3 p_in, __read_only image3d_t vol);
 __inline float3 eval_g(float3 p_in, __read_only image3d_t vol);
@@ -59,6 +59,54 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
     ray[id] = (float8)(b.xyz+d.xyz*bound.x, 1, b.xyz+d.xyz*bound.y, 1);
 }
 
+__kernel void applyQuasiInterpolator(__write_only image3d_t vol, __read_only image3d_t org_vol, float4 coef, int4 dim)
+{
+    int4 id = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 1);
+    int4 lid = (int4)(get_local_id(0), get_local_id(1), get_local_id(2), 1);
+    
+    float val = 0.0f;
+
+    if(any(id.xyz>=dim.xyz)) return;
+
+    // 0th
+    val = read_imagef(org_vol, sp, id).x*coef.s0;
+
+    // First neighbor
+    val += read_imagef(org_vol, sp, id + (int4)(1,0,0,0)).x*coef.s1;
+    val += read_imagef(org_vol, sp, id + (int4)(0,1,0,0)).x*coef.s1;
+    val += read_imagef(org_vol, sp, id + (int4)(0,0,1,0)).x*coef.s1;
+    val += read_imagef(org_vol, sp, id + (int4)(-1,0,0,0)).x*coef.s1;
+    val += read_imagef(org_vol, sp, id + (int4)(0,-1,0,0)).x*coef.s1;
+    val += read_imagef(org_vol, sp, id + (int4)(0,0,-1,0)).x*coef.s1;
+
+    // Second neighbor
+    val += read_imagef(org_vol, sp, id + (int4)(0,1,1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(1,0,1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(1,1,0,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)( 0,-1,1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(-1, 0,1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(-1, 1,0,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(0, 1,-1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(1, 0,-1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(1,-1, 0,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)( 0,-1,-1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(-1, 0,-1,0)).x*coef.s2;
+    val += read_imagef(org_vol, sp, id + (int4)(-1,-1, 0,0)).x*coef.s2;
+
+    // Third neighbor
+    val += read_imagef(org_vol, sp, id + (int4)( 1, 1, 1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)(-1, 1, 1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)( 1,-1, 1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)( 1, 1,-1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)( 1,-1,-1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)(-1, 1,-1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)(-1,-1, 1,0)).x*coef.s3;
+    val += read_imagef(org_vol, sp, id + (int4)(-1,-1,-1,0)).x*coef.s3;
+
+    write_imagef(vol, id, val);
+
+}
+
 __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, int4 dim, float level)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
@@ -105,25 +153,11 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
 __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
-    float4 p = read_imagef(Position, sp2, id)*(float4)(convert_float3(dim.xyz-1), 1);
+    float4 p = read_imagef(Position, sp, id)*(float4)(convert_float3(dim.xyz-1), 1);
 
     float3 grad = (float3)(0);
-    #if 1
     if(p.w!=0)  grad = eval_g(p.xyz, vol);
-    #else
-    if(p.w!=0){
-        float delta = 0.1;
-        float d011 = eval(p.xyz-(float3)(delta, 0, 0), vol);
-        float d211 = eval(p.xyz+(float3)(delta, 0, 0), vol);
-        float d101 = eval(p.xyz-(float3)(0, delta, 0), vol);
-        float d121 = eval(p.xyz+(float3)(0, delta, 0), vol);
-        float d110 = eval(p.xyz-(float3)(0, 0, delta), vol);
-        float d112 = eval(p.xyz+(float3)(0, 0, delta), vol);
-        grad = (float3)(d211-d011, d121-d101, d112-d110)/(2*delta);
-    }
-
-    #endif
-
+    
     write_imagef(Gradient, id, (float4)(grad,1));
 }
 
@@ -131,7 +165,7 @@ __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image3d_
 __kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
-    float4 p = read_imagef(Position, sp2, id)*(float4)(convert_float3(dim.xyz-1), 1);
+    float4 p = read_imagef(Position, sp, id)*(float4)(convert_float3(dim.xyz-1), 1);
 
     float3 grad = (float3)(0);
     if(p.w!=0){

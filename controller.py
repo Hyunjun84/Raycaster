@@ -38,6 +38,7 @@ class Controller :
         self.__update_MVP(np.eye(4).astype(np.float32), View)
         self.renderer.update_uniform(self.MVP)
         self.fov = self.setting["FOV"]
+        self.withQuasi = False
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -88,8 +89,6 @@ class Controller :
         msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
         evt1 = self.raycaster.genRay(self.invMVP, np.float32(self.fov))
-        #self.raycaster.ray_dump()
-        #exit(0)
         evt2 = self.raycaster.raycast(self.isovalue, self.deffered_buffer[0])
         evt3 = self.raycaster.evalGradient(self.deffered_buffer[0], self.deffered_buffer[1])
         cl.enqueue_release_gl_objects(self.queue, self.deffered_buffer)
@@ -147,7 +146,12 @@ class Controller :
                         Log.info(self.isovalue)
 
                 case glfw.KEY_K :
-                    self.raycaster.nextKernel()
+                    self.raycaster.nextKernel()    
+                    self.raycaster.applyQuasiInterpolator(self.withQuasi)
+
+                case glfw.KEY_Q :
+                    self.withQuasi = not self.withQuasi
+                    self.raycaster.applyQuasiInterpolator(self.withQuasi)
 
                 case glfw.KEY_MINUS :
                     self.isovalue -= 0.01;
@@ -232,13 +236,13 @@ if __name__ == "__main__":
         "WIN_WIDTH" : 512,
         "WIN_HEIGHT" : 512,
         "RAY_DOMAIN" : [512,512],
-        "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_20_O.raw",
-        "VOLUE_DATA_DIM" : [20,20,20,1],
+        "VOLUME_DATA_PATH" : "/Users/kamu/data/ML_80_O.raw",
+        "VOLUE_DATA_DIM" : [80,80,80,1],
         "VOLUE_DATA_TYPE" : np.float32,
         "ISOVALUE" : 0.5,
-        "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC":"./kernel/cc6.cl", 
-                           "Second Order FCC Voronoi-Spline":"./kernel/fcc_v2.cl", 
-                           "Third Order FCC Voronoi-Spline":"./kernel/fcc_v3.cl"},
+        "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC" : ["./kernel/cc6.cl",    (2.0, -1/6, 0.0, 0.0)], 
+                           "Second Order FCC Voronoi-Spline": ["./kernel/fcc_v2.cl", (1.0, 0.0, 0.0, 0.0)], 
+                           "Third Order FCC Voronoi-Spline" : ["./kernel/fcc_v3.cl", (3/2, 0.0, -1/24, 0.0)]},
         "FOV" : 60,
     }
 

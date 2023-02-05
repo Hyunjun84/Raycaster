@@ -10,12 +10,12 @@ class Raycaster :
         self.Log = logging.getLogger("Raycaster")
 
         with open('./kernel/raycaster.cl', 'r') as fp : src = fp.read()
-        for title, sp in splines.items() :
+        for title, (sp, quasi) in splines.items() :
             with open(sp, 'r') as fp : 
                 kernel_src = src+fp.read()
                 prg = cl.Program(self.ctx, kernel_src)
                 prg.build(options=["",],devices=[devices[0],], cache_dir=None)
-                self.prgs.append((title, prg))
+                self.prgs.append((title, prg, quasi))
 
         self.current_prg_idx = -1
         self.nextKernel()
@@ -41,9 +41,39 @@ class Raycaster :
         
         mf = cl.mem_flags
         fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
-        print(self.data)
-        self.d_volume = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.dim[:3], hostbuf=self.data)
+        self.d_volume = cl.Image(context=self.ctx, flags=mf.READ_WRITE, format=fmt, shape=self.dim[:3])
+        self.d_org = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.dim[:3], hostbuf=self.data)
+        cl.enqueue_copy(queue=self.queue, 
+                        dest=self.d_volume, 
+                        src=self.d_org, 
+                        src_origin=(0,0,0), 
+                        dest_origin=(0,0,0), 
+                        region=self.dim[:3])
 
+    def applyQuasiInterpolator(self, tag) :
+        
+        if tag :
+            sz_global = np.array(self.dim[:3]).astype(np.int32)
+            sz_local = np.array([4,4,4]).astype(np.int32)
+
+            sz_global = tuple(sz_global-1 + sz_local-(sz_global-1)%sz_local)
+            sz_local = tuple(sz_local)
+
+            self.prg.applyQuasiInterpolator(queue=self.queue, 
+                                            global_size=sz_global, 
+                                            local_size=sz_local, 
+                                            arg0=self.d_volume, 
+                                            arg1=self.d_org, 
+                                            arg2=np.float32(self.prgs[self.current_prg_idx][2]),
+                                            arg3=np.int32(self.dim))
+        else :
+            cl.enqueue_copy(queue=self.queue, 
+                            dest=self.d_volume, 
+                            src=self.d_org, 
+                            src_origin=(0,0,0), 
+                            dest_origin=(0,0,0), 
+                            region=self.dim[:3])
+        
     def ray_dump(self) :
         buf = np.zeros([512*512,8], dtype=np.float32)
         cl.enqueue_copy(self.queue, src=self.rays, dest=buf)
