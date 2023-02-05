@@ -31,7 +31,7 @@
 #define c25 c[25]
 #define c26 c[26]
 
-__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, int4 P)
+__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, uint4 P)
 {
     // Fetch coefficients
     int3 dir2x = 2*R*shuffle((int4)(1,0,0,0), P).xyz;
@@ -77,8 +77,8 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
     int3 R = find_R(p_local);
     p_local = convert_float3(R)*p_local;
 
-    int8 P = find_P(p_local);
-    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
+    uint8 P = find_P(p_local);
+    p_local = shuffle((float4)(p_local, 0.f), P.lo).xyz;
 
     float c[27];
     fetch_coefficients(c, vol, org, R, P.hi);
@@ -196,8 +196,8 @@ __inline float3 eval_g(float3 p_in, __read_only image3d_t vol)
     int3 R = find_R(p_local);
     p_local = convert_float3(R)*p_local;
 
-    int8 P = find_P(p_local);
-    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
+    uint8 P = find_P(p_local);
+    p_local = shuffle((float4)(p_local, 0), P.lo).xyz;
 
     float c[27];
     fetch_coefficients(c, vol, org, R, P.hi);

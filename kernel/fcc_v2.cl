@@ -13,7 +13,7 @@
 #define c7 c[7]
 
 
-__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, int4 P)
+__inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, uint4 P)
 {
     int3 dirx = R*shuffle((int4)(1,0,0,0), P).xyz;
     int3 diry = R*shuffle((int4)(0,1,0,0), P).xyz;
@@ -41,8 +41,8 @@ __inline float eval(float3 p_in, __read_only image3d_t vol)
     int3 R = find_R(p_local);
     p_local = convert_float3(R)*p_local;
 
-    int8 P = find_P(p_local);
-    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
+    uint8 P = find_P(p_local);
+    p_local = shuffle((float4)(p_local, 0.f), P.lo).xyz;
 
     float4 u1 = to_barycentric(p_local);
     
@@ -91,8 +91,8 @@ __inline float3 eval_g(float3 p_in, __read_only image3d_t vol)
     int3 R = find_R(p_local);
     p_local = convert_float3(R)*p_local;
 
-    int8 P = find_P(p_local);
-    p_local = shuffle((int4)(p_local, 0), P.lo).xyz;
+    uint8 P = find_P(p_local);
+    p_local = shuffle((float4)(p_local, 0), P.lo).xyz;
 
     float4 u1 = to_barycentric(p_local);
     

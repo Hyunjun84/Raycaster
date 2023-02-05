@@ -45,18 +45,18 @@ __inline int3 find_R(float3 l)
     return R;
 }
 
-__inline int8 find_P(float3 l)
+__inline uint8 find_P(float3 l)
 {
     int3 dP = (int3)(convert_int(l.y>=l.x),    
                      convert_int(l.z>=l.x), 
                      convert_int(l.z>=l.y));
 
     int idx_P = 2*(dP.x+dP.y)+dP.z;
-    int3 vecP1 = (int3)(convert_int(idx_P==0), convert_int(idx_P==4), convert_int(idx_P==3));
-    int3 vecP2 = (int3)(convert_int(idx_P==1), convert_int(idx_P==2), convert_int(idx_P==5));
+    uint3 vecP1 = (uint3)(convert_uint(idx_P==0), convert_uint(idx_P==4), convert_uint(idx_P==3));
+    uint3 vecP2 = (uint3)(convert_uint(idx_P==1), convert_uint(idx_P==2), convert_uint(idx_P==5));
 
-    return (int8)(vecP1.yxz+vecP2.yzx + 2*(vecP1.zyx+vecP2.zxy), 3,
-                  vecP1.zxy+vecP2.yzx + 2*(vecP1.yzx+vecP2.zxy), 3);
+    return (uint8)(vecP1.yxz+vecP2.yzx + 2*(vecP1.zyx+vecP2.zxy), 3,
+                   vecP1.zxy+vecP2.yzx + 2*(vecP1.yzx+vecP2.zxy), 3);
 }
 
 __inline float4 to_barycentric(float3 p)
