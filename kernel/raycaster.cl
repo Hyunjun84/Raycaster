@@ -2,6 +2,14 @@ const sampler_t sp = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_CLAMP | CLK_FILTER
 const sampler_t sp2 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 const sampler_t sp3 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_LINEAR;
 
+#ifndef M_PI
+# define M_PI 3.141592653589793115998
+#endif
+
+#ifndef M_PI_F
+# define M_PI_F 3.14159274101257f
+#endif
+
 __inline float eval(float3 p_in, __read_only image3d_t vol);
 __inline float3 eval_g(float3 p_in, __read_only image3d_t vol);
 
@@ -24,7 +32,7 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
         b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); //[-1...1]^3
         e = (float4)(b.xy, 1.0f, 1.0f);
     } else {
-        b = (float4)(0, 0, -1-sqrt(2.0f)/tan(fov*0.5f/180.0f*M_PI), 1.0f);
+        b = (float4)(0, 0, -1-sqrt(2.0f)/tan(fov*0.5f/180.0f*M_PI_F), 1.0f);
         e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f);
     }
 
