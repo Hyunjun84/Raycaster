@@ -3,77 +3,22 @@ import pyopencl as cl
 import logging
 
 class Raycaster :
-    def __init__(self, ctx, devices, queue, splines) :
+    def __init__(self, ctx, devices, queue, kernel_src, resolution) :
         self.ctx = ctx
         self.queue = queue
         self.prgs = []
         self.Log = logging.getLogger("Raycaster")
 
-        with open('./kernel/raycaster.cl', 'r') as fp : src = fp.read()
-        for title, (sp, quasi) in splines.items() :
-            with open(sp, 'r') as fp : 
-                kernel_src = src+fp.read()
-                prg = cl.Program(self.ctx, kernel_src)
-                prg.build(options=["",],devices=[devices[0],], cache_dir=None)
-                self.prgs.append((title, prg, quasi))
-
-        self.current_prg_idx = -1
-        self.nextKernel()
-        self.setNumberofRays([8,8])
+        self.prg = cl.Program(self.ctx, kernel_src)
+        self.prg.build(options=["",],devices=[devices[0],], cache_dir=None)
         
-    def nextKernel(self) :
-        self.current_prg_idx = (self.current_prg_idx+1)%len(self.prgs)
-        self.prg = self.prgs[self.current_prg_idx][1]
-        self.Log.info("Current kernel : {0}".format(self.prgs[self.current_prg_idx][0]))
-
-    def setNumberofRays(self, siz) :
+        self.setResolution(resolution)
+        
+    def setResolution(self, siz) :
         mf = cl.mem_flags
         self.dim_ray = siz
         self.rays = cl.Buffer(self.ctx, mf.READ_WRITE, np.prod(siz)*8*4)
 
-    def uploadVolumeData(self, FILE, dim, typ) :
-        self.data = np.fromfile(FILE, dtype=typ).astype(np.float32)
-        self.dim = dim
-
-        self.Log.info("Volume data infomation :")
-        self.Log.info("\tdimension : ({0}, {1}, {2})".format(*dim))
-        self.Log.info("\trange : {0:.4f} - {1:.4f}".format(np.min(self.data), np.max(self.data)))
-        
-        mf = cl.mem_flags
-        fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
-        self.d_volume = cl.Image(context=self.ctx, flags=mf.READ_WRITE, format=fmt, shape=self.dim[:3])
-        self.d_org = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.dim[:3], hostbuf=self.data)
-        cl.enqueue_copy(queue=self.queue, 
-                        dest=self.d_volume, 
-                        src=self.d_org, 
-                        src_origin=(0,0,0), 
-                        dest_origin=(0,0,0), 
-                        region=self.dim[:3])
-
-    def applyQuasiInterpolator(self, tag) :
-        
-        if tag :
-            sz_global = np.array(self.dim[:3]).astype(np.int32)
-            sz_local = np.array([4,4,4]).astype(np.int32)
-
-            sz_global = tuple(sz_global-1 + sz_local-(sz_global-1)%sz_local)
-            sz_local = tuple(sz_local)
-
-            self.prg.applyQuasiInterpolator(queue=self.queue, 
-                                            global_size=sz_global, 
-                                            local_size=sz_local, 
-                                            arg0=self.d_volume, 
-                                            arg1=self.d_org, 
-                                            arg2=np.float32(self.prgs[self.current_prg_idx][2]),
-                                            arg3=np.int32(self.dim))
-        else :
-            cl.enqueue_copy(queue=self.queue, 
-                            dest=self.d_volume, 
-                            src=self.d_org, 
-                            src_origin=(0,0,0), 
-                            dest_origin=(0,0,0), 
-                            region=self.dim[:3])
-        
     def ray_dump(self) :
         buf = np.zeros([512*512,8], dtype=np.float32)
         cl.enqueue_copy(self.queue, src=self.rays, dest=buf)
@@ -98,28 +43,30 @@ class Raycaster :
             arg2=fov
         )
 
-    def raycast(self, iso, buf_pos) :
+    def raycast(self, iso, buf_pos, volume_data) :
+        buf_vol, dim = volume_data
         return self.prg.raycast(
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=buf_pos,
-            arg1=self.d_volume,
+            arg1=buf_vol,
             arg2=self.rays,
             arg3=np.float32([1,1,1,1]),
-            arg4=np.int32(self.dim),
+            arg4=np.int32(dim),
             arg5=np.float32(iso),
         )
 
-    def evalGradient(self, buf_pos, buf_grad) :
+    def evalGradient(self, buf_grad, buf_pos, volume_data) :
+        buf_vol, dim = volume_data
         return self.prg.evalGradient(
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=buf_grad, 
-            arg1=self.d_volume,
+            arg1=buf_vol,
             arg2=buf_pos,
-            arg3=np.int32(self.dim))
+            arg3=np.int32(dim))
 
 
 if __name__ == "__main__":
