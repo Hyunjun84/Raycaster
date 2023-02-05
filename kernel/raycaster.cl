@@ -8,15 +8,17 @@
 
 const sampler_t sp = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
-__inline float eval(float3 p_in, __read_only image3d_t vol);
-__inline float3 eval_g(float3 p_in, __read_only image3d_t vol);
+__inline float eval(float3 p, __read_only image3d_t vol);
+__inline float3 eval_g(float3 p, __read_only image3d_t vol);
+__inline float8 eval_H(float3 p, __read_only image3d_t vol);
 
 __inline float4 MDotV(float16 m, float4 v) 
 {
 	return (float4)(dot(m.s0123, v),dot(m.s4567, v), dot(m.s89ab, v), dot(m.scdef, v));
+    //return (float4)(dot(m.s038c, v),dot(m.s149d, v), dot(m.s24ae, v), dot(m.s35bf, v));
 }
 
-__kernel void genRay(__global float8* ray, float16 MVP, float fov)
+__kernel void genRay(__global float8* ray, float16 M, float fov)
 {
 	int2 idx = (int2)(get_global_id(0), get_global_id(1));
 	int2 sz  = (int2)(get_global_size(0), get_global_size(1));
@@ -26,7 +28,7 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
 	float4 b;
 	float4 e;
 
-    if(fov == 0) {
+    if(fov == 0) { // orthogonal projection
         b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); //[-1...1]^3
         e = (float4)(b.xy, 1.0f, 1.0f);
     } else {
@@ -34,10 +36,10 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
         e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f);
     }
 
-	b = MDotV(MVP, b);
-    e = MDotV(MVP, e);
+	b = MDotV(M, b);
+    e = MDotV(M, e);
 
-    float4 d = normalize(e-b);
+    float4 d = (float4)(normalize(e.xyz-b.xyz), 0);
 
     float2 hit_yz = (float2)(-1-b.x, 1-b.x)/d.x;
     float2 hit_zx = (float2)(-1-b.y, 1-b.y)/d.y;
@@ -58,19 +60,18 @@ __kernel void genRay(__global float8* ray, float16 MVP, float fov)
 }
 
 
-__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, int4 dim, float level)
+__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, float4 dim, float level)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
     int2 sz  = (int2)(get_global_size(0), get_global_size(1));
 
 	float8 ray = Rays[sz.x*id.y+id.x];
 
-	float3 fdim = convert_float3(dim.xyz-1);
-	float3 p = fdim*(0.5f*ray.s012+0.5f); // [0...fdim]^3
-    float3 e = fdim*(0.5f*ray.s456+0.5f); // [0...fdim]^3
+	float3 p = dim.xyz*(0.5f*ray.s012+0.5f)-0.5f; // [0...fdim]^3
+    float3 e = dim.xyz*(0.5f*ray.s456+0.5f)-0.5f; // [0...fdim]^3
 	float3 p_prev;
 
-	float step = 0.5f;
+	float step = 0.1f;
     float max_ray_len = distance(p,e);
     float voxel = eval(p, vol);
     float voxel_prev = voxel;
@@ -83,7 +84,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
 
     int i=0;
 
-    float3 inverse_scale = 1.f/(fdim.xyz-1.f);
+    float3 inverse_scale = 1.f/dim.xyz;
     for(i=0; i<max_iter; i++) {
     	p = p+dir.xyz;
     	voxel = eval(p, vol);
@@ -91,7 +92,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
             // One step of Regula Falsi
             if(fabs(voxel-voxel_prev) > 1E-4) 
                 p = (p*(voxel_prev-level) - p_prev*(voxel-level))/(voxel_prev-voxel);
-            val = (float4)((p*inverse_scale), orientation);
+            val = (float4)((p*inverse_scale-0.5f), orientation); // [0...1]^3
             break;
         }
         voxel_prev=voxel;
@@ -101,22 +102,24 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     write_imagef(Position, id, val);
 }
 
-__kernel void evalGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
+__kernel void evalGradient(__write_only image2d_t Gradient, __read_only image2d_t Position, __read_only image3d_t vol, float4 dim)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
-    float4 p = read_imagef(Position, sp, id)*(float4)(convert_float3(dim.xyz-1), 1);
+    float4 p = read_imagef(Position, sp, id);
+    p.xyz = (p.xyz+0.5f)*dim.xyz;
 
     float3 grad = (float3)(0);
     if(p.w!=0)  grad = eval_g(p.xyz, vol);
     
-    write_imagef(Gradient, id, (float4)(grad,1));
+    write_imagef(Gradient, id, (float4)(grad*dim.xyz,1));
 }
 
 
-__kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only image3d_t vol, __read_only image2d_t Position, int4 dim)
+__kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only image2d_t Position, __read_only image3d_t vol, float4 dim)
 {
     int2 id = (int2)(get_global_id(0), get_global_id(1));
-    float4 p = read_imagef(Position, sp, id)*(float4)(convert_float3(dim.xyz-1), 1);
+    float4 p = read_imagef(Position, sp, id);
+    p.xyz = (p.xyz+0.5f)*dim.xyz;
 
     float3 grad = (float3)(0);
     if(p.w!=0){
@@ -130,10 +133,56 @@ __kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only im
         grad = (float3)(d211-d011, d121-d101, d112-d110)/(2*delta);
     }
 
-    write_imagef(Gradient, id, (float4)(grad,1));
+    write_imagef(Gradient, id, (float4)(grad*dim.xyz,1));
 }
 
-__kernel void hessian(__global float8* dxx, __read_only image2d_t vol, __global float4* pos)
+__kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_t Hessian2, __read_only image2d_t Position, __read_only image3d_t vol, float4 dim)
 {
-    
+    int2 id = (int2)(get_global_id(0), get_global_id(1));
+    float4 p = read_imagef(Position, sp, id);
+    p.xyz = (p.xyz+0.5f)*dim.xyz;
+
+    float8 H = (float8)(0);
+    if(p.w!=0) {
+#if 1
+        H = eval_H(p.xyz, vol);
+#else
+        float delta = 0.05;
+        float f111 = eval(p.xyz, vol);
+
+        float f001 = eval(p.xyz + (float3)(-delta,-delta,     0), vol);
+        float f010 = eval(p.xyz + (float3)(-delta,     0,-delta), vol);
+        float f011 = eval(p.xyz + (float3)(-delta,     0,     0), vol);
+        float f012 = eval(p.xyz + (float3)(-delta,     0, delta), vol);
+        float f021 = eval(p.xyz + (float3)(-delta, delta,     0), vol);
+
+        float f100 = eval(p.xyz + (float3)(     0,-delta,-delta), vol);
+        float f101 = eval(p.xyz + (float3)(     0,-delta,     0), vol);
+        float f102 = eval(p.xyz + (float3)(     0,-delta, delta), vol);
+        float f110 = eval(p.xyz + (float3)(     0,     0,-delta), vol);
+        float f112 = eval(p.xyz + (float3)(     0,     0, delta), vol);
+        float f120 = eval(p.xyz + (float3)(     0, delta,-delta), vol);
+        float f121 = eval(p.xyz + (float3)(     0, delta,     0), vol);
+        float f122 = eval(p.xyz + (float3)(     0, delta, delta), vol);
+
+        float f201 = eval(p.xyz + (float3)( delta,-delta,     0), vol);
+        float f210 = eval(p.xyz + (float3)( delta,     0,-delta), vol);
+        float f211 = eval(p.xyz + (float3)( delta,     0,     0), vol);
+        float f212 = eval(p.xyz + (float3)( delta,     0, delta), vol);
+        float f221 = eval(p.xyz + (float3)( delta, delta,     0), vol);
+
+        float _1_over_delta_square = 1.0/(delta*delta);
+
+        H.lo.xyz = (float3)((f211 - 2.0*f111 + f011),
+                            (f121 - 2.0*f111 + f101),
+                            (f112 - 2.0*f111 + f110))*_1_over_delta_square;
+
+        H.hi.xyz = 0.25*(float3)((f122 - f120 - f102 + f100),
+                                 (f212 - f210 - f012 + f010),
+                                 (f221 - f201 - f021 + f001))*_1_over_delta_square;
+#endif
+    }
+
+    write_imagef(Hessian1, id, H.lo*dim*dim);
+    write_imagef(Hessian2, id, H.hi*dim.yzxw*dim.zxyw);
 }

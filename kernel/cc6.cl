@@ -1,5 +1,6 @@
-#define DENOM_M 0.00260417
+#define DENOM_M 0.00260417f
 #define DENOM_G 0.015625f  // 1/64
+#define DENOM_H 0.0625f   // 1/16
 
 #define TYPE_BLUE   0
 #define TYPE_GREEN  1
@@ -210,6 +211,99 @@ float3 eval_G_expr_blue(float* c, float4 u1, float4 u2)
     return u1.x*g;
 }
 
+__inline float8 eval_H_expr_red(float* c, float4 u1)
+{
+    float8 H = (float8)(0);
+    H.s0 = 2*((c0+c1+c3+c4-c6-c8-c13-c15+c19+c20+c21+c22+c24+c26+c27+c28) + 2*(-c7-c9-c11-c14) + 4*(c2-c10))*u1.s0 +
+               ((c0+c4+c6-c7-c8+c13-c14-c15+c19-c20-c21+c26-c27-c28+c32+c36) + 2*(c3-c9-c22+c35) + 4*(c2-c10-c23+c34))*u1.s1 +
+               ((c1+c3+c6+c8-c9-c11-c13-c15+c19+c21-c22-c24-c26-c28+c33+c35) + 2*(c4-c7-c20+c36) + 4*(c2-c10-c23+c34))*u1.s2 +
+               ((c0+c1+c3+c4-c7-c9-c11-c14-c20-c22-c24-c27+c32+c33+c35+c36) + 4*(c2-c10-c23+c34))*u1.s3 ;
+    H.s1 = 2*((c0-c1-c3+c4+c6+c8+c13+c15+c19+c20+c21-c22-c24+c26+c27+c28) + 2*(c7-c9-c11+c14) + 4*(-c10-c23))*u1.s0 +
+               ((c0+c4+c6+c13+c19+c26+c32+c36) + 2*(-c3-c9-c22-c35) + 3*(c7+c8+c14+c15+c20+c21+c27+c28) + 4*(-c11-c24) + 8*(-c10-c23))*u1.s1 +
+               ((c1+c3+c6+c8-c9-c11-c13-c15+c19+c21-c22-c24-c26-c28+c33+c35) + 2*(-c4+c7+c20-c36) + 4*(-c10+c17-c23+c30))*u1.s2 +
+               ((c0-c1-c3+c4+c32-c33-c35+c36) + 2*(c6+c8+c13+c15+c19+c21+c26+c28) + 3*(c7-c9-c11+c14+c20-c22-c24+c27) + 8*(-c10-c23))*u1.s3 ;
+    H.s2 = 2*((c1-c0+c3-c4+c6+c8+c13+c15+c19-c20+c21+c22+c24+c26-c27+c28) + 2*(-c7+c9+c11-c14) + 4*(-c10-c23))*u1.s0 +
+               ((c0+c4+c6-c7-c8+c13-c14-c15+c19-c20-c21+c26-c27-c28+c32+c36) + 2*(-c3+c9+c22-c35) + 4*(-c10+c12-c23+c25))*u1.s1 +
+               ((c1+c3+c6+c8+c19+c21+c33+c35) + 2*(-c4-c7-c20-c36) + 3*(c9+c11+c13+c15+c22+c24+c26+c28) + 4*(-c14-c27) + 8*(-c10-c23))*u1.s2 +
+               ((c1-c0+c3-c4-c32+c33+c35-c36) + 2*(c6+c8+c13+c15+c19+c21+c26+c28) + 3*(-c7+c9+c11-c14-c20+c22+c24-c27) + 8*(-c10-c23))*u1.s3 ;
+    H.s4 = 2*(((c6-c8-c13+c15+c19-c21-c26+c28))*u1.s0 +
+                ((c6-c8-c13+c15+c19-c21-c26+c28))*u1.s3) +
+               ((c0-c4+c6+c7-c13-c14+c19+c20-c26-c27+c32-c36) + 3*(-c8+c15-c21+c28))*u1.s1 +
+               ((c1-c3+c6-c8+c9-c11+c19-c21+c22-c24+c33-c35) + 3*(-c13+c15-c26+c28))*u1.s2;
+    H.s5 = 2*((c1-c3-c19+c21-c22+c24-c26+c28) + 2*(c9-c11))*u1.s0 +
+               ((c0+c4+c6+c7-c8+c13+c14-c15-c19-c20+c21-c26-c27+c28-c32-c36) + 2*(-c3+c9-c22+c35) + 4*(-c11+c24))*u1.s1 +
+               ((c1-c3+c6-c8+c13-c15-c19+c21-c26+c28-c33+c35) + 3*(c9-c11-c22+c24))*u1.s2 +
+               ((c1-c3+c6-c8+c13-c15-c19+c21-c26+c28-c33+c35) + 3*(c9-c11-c22+c24))*u1.s3;
+    H.s6 = 2*((c0-c4-c19-c20-c21+c26+c27+c28) + 2*(c7-c14))*u1.s0 +
+               ((c0-c4+c6+c8-c13-c15-c19-c21+c26+c28-c32+c36) + 3*(c7-c14-c20+c27))*u1.s1 +
+               ((c1+c3+c6+c8+c9+c11-c13-c15-c19-c21-c22-c24+c26+c28-c33-c35) + 2*(-c4+c7-c20+c36) + 4*(-c14+c27))*u1.s2 +
+               ((c0-c4+c6+c8-c13-c15-c19-c21+c26+c28-c32+c36) + 3*(c7-c14-c20+c27))*u1.s3;
+
+    return H;
+}
+
+__inline float8 eval_H_expr_green(float* c, float4 u1)
+{
+    float8 H = (float8)(0);
+    H.s0 = 2*((c0+c1+c3+c4+c5-c6-c7-c8-c9-c13-c15+c20+c21+c22+c23+c24+c26+c27+c28) + 3*(c2-c11-c14) + 4*(-c10))*u1.s0 +
+               ((c0+c4+c5+c6-c8-c9+c13-c15+c16-c20-c25+c26-c27+c36) + 2*(c3-c11-c14-c22-c23-c28) + 3*(c2+c35) + 4*(-c10+c34))*u1.s1 +
+               ((c1+c3+c5+c6-c7+c8-c13-c15+c18+c21-c22-c24-c30+c35) + 2*(c4-c11-c14-c20-c23-c28) + 3*(c2+c36) + 4*(-c10+c34))*u1.s2 +
+               ((c0+c1-c7-c9-c16-c18+c20+c21+c22+c25+c26+c30) + 2*(-c8-c13+c23+c28) + 3*(c3+c4+c24+c27) + 4*(c2+c5-c15) + 6*(-c11-c14) + 8*(-c10))*u1.s3 ;
+    H.s1 = 2*((c0-c1-c2-c3+c4+c5+c6+c8-c9+c13+c14+c15+c20+c21-c22-c24+c26+c27+c28) + 3*(c7-c11-c23) + 4*(-c10))*u1.s0 +
+               ((c0-c2+c4+c5+c6-c9+c13+c16-c25+c26-c35+c36) + 2*(-c3+c14-c22+c28) + 3*(c8+c15+c20+c27) + 4*(c7+c21-c24) + 6*(-c11-c23) + 8*(-c10))*u1.s1 +
+               ((c1-c2+c3+c5+c6+c8-c13-c15+c18+c21-c22-c24+c35-c36) + 2*(-c4-c11-c14+c20-c23-c28) + 3*(c7+c30) + 4*(-c10+c17))*u1.s2 +
+               ((c0+c1-c3-c4-c9-c16+c20+c21+c22-c24+c25+c26-c27+c30) + 2*(c8-c11-c13-c14-c23-c28) + 3*(c7+c18) + 4*(-c10+c17))*u1.s3;
+    H.s2 = 2*((c1-c0-c2+c3-c4+c5+c6-c7+c8+c11+c13+c15-c20+c21+c22+c24+c26-c27+c28) + 3*(c9-c14-c23) + 4*(-c10))*u1.s0 +
+               ((c0-c2+c4+c5+c6-c8+c13-c15+c16-c20+c26-c27-c35+c36) + 2*(-c3-c11-c14+c22-c23-c28) + 3*(c9+c25) + 4*(-c10+c12))*u1.s1 +
+               ((c1-c2+c3+c5+c6-c7+c8+c18+c21-c30+c35-c36) + 2*(-c4+c11-c20+c28) + 3*(c13+c15+c22+c24) + 4*(c9+c26-c27) + 6*(-c14-c23) + 8*(-c10))*u1.s2 +
+               ((c0+c1-c3-c4-c7-c18+c20+c21+c22-c24+c25+c26-c27+c30) + 2*(-c8-c11+c13-c14-c23-c28) + 3*(c9+c16) + 4*(-c10+c12))*u1.s3 ;
+    H.s4 = 2*((c5-c2+c6+c7-c8+c9-c11-c13-c14+c15-c21+c23-c26+c28))*u1.s0 +
+               ((c0-c2-c4+c5+c6+c9-c13+c16+c20-c25-c26-c27+c35-c36) + 2*(c7-c11-c14-c21+c23+c28) + 3*(-c8+c15))*u1.s1 +
+               ((c1-c2-c3+c5+c6+c7-c8+c18-c21+c22-c24-c30-c35+c36) + 2*(c9-c11-c14+c23-c26+c28) + 3*(-c13+c15))*u1.s2 +
+               ((c0+c1-c3-c4+c7+c9+c16+c18+c20-c21+c22-c24-c25-c26-c27-c30) + 2*(-c8-c11-c13-c14+c23+c28) + 4*(c15))*u1.s3 ;
+    H.s5 = 2*((c1+c2-c3-c5-c7+c9-c11+c14+c21-c22-c23+c24-c26+c28))*u1.s0 +
+               ((c0+c2+c4-c5+c6-c8+c9+c13-c15-c16-c20+c25-c26-c27+c35-c36) + 2*(-c3-c11+c14-c22-c23+c28) + 4*(c24))*u1.s1 +
+               ((c1+c2-c3-c5+c6-c7-c8+c13-c15-c18+c21+c30+c35-c36) + 2*(c9-c11+c14-c23-c26+c28) + 3*(-c22+c24))*u1.s2 +
+               ((c0+c1+c4-c7+c9-c16+c18-c20+c21-c22+c25-c26-c27-c30) + 2*(c2-c5-c11+c14-c23+c28) + 3*(-c3+c24))*u1.s3 ;
+    H.s6 = 2*((c0+c2-c4-c5+c7-c9+c11-c14-c20-c21-c23+c26+c27+c28))*u1.s0 +
+               ((c0+c2-c4-c5+c6+c8-c9-c13-c15-c16+c25+c26-c35+c36) + 2*(c7+c11-c14-c21-c23+c28) + 3*(-c20+c27))*u1.s1 +
+               ((c1+c2+c3-c5+c6+c7+c8-c13-c15-c18-c21-c22-c24+c30-c35+c36) + 2*(-c4+c11-c14-c20-c23+c28) + 4*(c27))*u1.s2 +
+               ((c0+c1+c3+c7-c9+c16-c18-c20-c21-c22-c24-c25+c26+c30) + 2*(c2-c5+c11-c14-c23+c28) + 3*(-c4+c27))*u1.s3 ;
+    
+    return H;
+}
+
+__inline float8 eval_H_expr_blue(float* c, float4 u1)
+{
+    float8 H = (float8)(0);
+    H.s0 = 2*((c2+c3+c4+c5-c10-c11-c14-c15-c23-c24-c27-c28+c34+c35+c36+c37))*u1.s0 +
+               ((c4+c5-c9-c12+c13+c16-c22-c25+c26+c29+c36+c37) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c2+c3+c34+c35))*u1.s1 +
+               ((c3+c5-c7+c8-c17+c18-c20+c21-c30+c31+c35+c37) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c2+c4+c34+c36))*u1.s2 +
+               ((-c7-c8-c9-c12-c13-c16-c17-c18+c20+c21+c22+c25+c26+c29+c30+c31) + 2*(c23+c24+c27+c28) + 4*(c2+c3+c4+c5) + 6*(-c10-c11-c14-c15))*u1.s3; 
+    H.s1 = 2*((c7+c8-c10-c11-c14-c15+c17+c18+c20+c21-c23-c24-c27-c28+c30+c31))*u1.s0 +
+               ((c4-c3-c2+c5-c9-c12+c13+c16-c22-c25+c26+c29-c34-c35+c36+c37) + 2*(c14+c15+c27+c28) + 4*(c7+c8+c20+c21) + 6*(-c10-c11-c23-c24))*u1.s1 +
+               ((c3-c2-c4+c5+c8+c18+c21+c31-c34+c35-c36+c37) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c7+c17+c20+c30))*u1.s2 +
+               ((-c9-c12-c13-c16+c20+c21+c22+c25+c26+c29+c30+c31) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c7+c8+c17+c18))*u1.s3 ;
+    H.s2 = 2*((c9-c10-c11+c12+c13-c14-c15+c16+c22-c23-c24+c25+c26-c27-c28+c29))*u1.s0 +
+               ((c4-c3-c2+c5+c13+c16+c26+c29-c34-c35+c36+c37) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c9+c12+c22+c25))*u1.s1 +
+               ((c3-c2-c4+c5-c7+c8-c17+c18-c20+c21-c30+c31-c34+c35-c36+c37) + 2*(c11+c15+c24+c28) + 4*(c9+c13+c22+c26) + 6*(-c10-c14-c23-c27))*u1.s2 +
+               ((-c8-c7-c17-c18+c20+c21+c22+c25+c26+c29+c30+c31) + 2*(-c10-c11-c14-c15-c23-c24-c27-c28) + 3*(c9+c12+c13+c16))*u1.s3 ;
+    H.s4 = ((c7-c8+c9-c12-c13+c16-c17+c18+c20-c21+c22-c25-c26+c29-c30+c31) + 2*(c10-c11-c14+c15+c23-c24-c27+c28))*u1.s0 +
+             ((c3-c2-c4+c5+c9-c12-c13+c16+c22-c25-c26+c29-c34+c35-c36+c37) + 2*(c7-c8+c10-c11-c14+c15+c20-c21+c23-c24-c27+c28))*u1.s1 +
+             ((c4-c3-c2+c5+c7-c8-c17+c18+c20-c21-c30+c31-c34-c35+c36+c37) + 2*(c9+c10-c11-c13-c14+c15+c22+c23-c24-c26-c27+c28))*u1.s2 +
+             ((c7-c8+c9-c12-c13+c16-c17+c18+c20-c21+c22-c25-c26+c29-c30+c31) + 2*(c10-c11-c14+c15+c23-c24-c27+c28))*u1.s3 ;
+    H.s5 = ((c2-c3+c4-c5+c9-c12+c13-c16-c22+c25-c26+c29-c34+c35-c36+c37) + 2*(c10-c11+c14-c15-c23+c24-c27+c28))*u1.s0 +
+             ((c2-c3+c4-c5+c9-c12+c13-c16-c22+c25-c26+c29-c34+c35-c36+c37) + 2*(c10-c11+c14-c15-c23+c24-c27+c28))*u1.s1 +
+             ((c2-c3+c4-c5-c7-c8-c17-c18+c20+c21+c30+c31-c34+c35-c36+c37) + 2*(c9+c10-c11+c13+c14-c15-c22-c23+c24-c26-c27+c28))*u1.s2 +
+             ((-c7+c8+c9-c12+c13-c16-c17+c18-c20+c21-c22+c25-c26+c29-c30+c31) + 2*(c2-c3+c4-c5+c10-c11+c14-c15-c23+c24-c27+c28))*u1.s3 ;
+    H.s6 = ((c2+c3-c4-c5+c7+c8-c17-c18-c20-c21+c30+c31-c34-c35+c36+c37) + 2*(c10+c11-c14-c15-c23-c24+c27+c28))*u1.s0 +
+             ((c2+c3-c4-c5-c9-c12-c13-c16+c22+c25+c26+c29-c34-c35+c36+c37) + 2*(c7+c8+c10+c11-c14-c15-c20-c21-c23-c24+c27+c28))*u1.s1 +
+             ((c2+c3-c4-c5+c7+c8-c17-c18-c20-c21+c30+c31-c34-c35+c36+c37) + 2*(c10+c11-c14-c15-c23-c24+c27+c28))*u1.s2 +
+             ((c7+c8-c9-c12+c13+c16-c17-c18-c20-c21-c22-c25+c26+c29+c30+c31) + 2*(c2+c3-c4-c5+c10+c11-c14-c15-c23-c24+c27+c28))*u1.s3 ;
+
+    return H;
+}
+
 __inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, int3 vecPx, int3 vecPy, int3 vecPz)
 {
     int3 dirx = R*vecPx;
@@ -414,4 +508,55 @@ __inline float3 eval_g(float3 p_in,  __read_only image3d_t vol)
     g *= convert_float3(R);
     
     return DENOM_G*g;
+}
+
+__inline float8 eval_H(float3 p_in,  __read_only image3d_t vol)
+{
+    int3 org = convert_int3(round(p_in));
+    float3 p_local = p_in - convert_float3(org);
+
+    int3 R = 2*(int3)(p_local.x>0, p_local.y>0, p_local.z>0)-1;
+
+    float3 p_cube = p_local.xyz*convert_float3(R);
+    int4   bit = (int4)( p_cube.x-p_cube.y-p_cube.z>0,
+                        -p_cube.x+p_cube.y-p_cube.z>0,
+                        -p_cube.x-p_cube.y+p_cube.z>0,
+                         p_cube.x+p_cube.y+p_cube.z>1);
+    // bit_tet   type_tet type_P permutation
+    // 0 1 2 3
+    // -------------------------------------
+    // 1 0 0 0       2      0        123    (edge/red)  xyz
+    // 0 1 0 0       2      1        231    (edge/red)  yzx
+    // 0 0 1 0       2      2        312    (edge/red)  zxy
+    // 0 0 0 1       0      0        123    (oct/blue)
+    // 0 0 0 0       1      0        123    (vert/green)
+    int type_tet = bit.x+bit.y+bit.z-bit.w+1;
+    int type_P = 2*bit.z + bit.y; // one of three even permutations
+
+
+    int3 vecPx = (int3)(type_P==0, type_P==1, type_P==2);
+    int3 vecPy = vecPx.zxy;
+    int3 vecPz = vecPx.yzx;
+
+    float3 p_ref = p_cube;
+    if(type_P==1) p_ref = p_ref.yzx;
+    else if(type_P==2) p_ref= p_ref.zxy;    
+
+    float c[38];
+    fetch_coefficients(c, vol, org, R, vecPx, vecPy, vecPz);
+
+    float4 u1 = to_barycentric(type_tet, p_ref);
+
+    float8 H = (float8)(0);
+   
+    if(type_tet==TYPE_RED)          H = eval_H_expr_red(c, u1);
+    else if(type_tet==TYPE_GREEN)   H = eval_H_expr_green(c, u1);
+    else if(type_tet==TYPE_BLUE)    H = eval_H_expr_blue(c, u1);
+    
+    if(type_P == 1) H = H.s20136457;
+    else if(type_P == 2) H = H.s12035647;
+    
+    H.s456 *= convert_float3(R.x*R.y*R.z*R);
+    
+    return DENOM_H*H;
 }

@@ -1,5 +1,6 @@
 import glfw
 import logging
+import glm
 import pyopencl as cl
 from pyopencl.tools import get_gl_sharing_context_properties
 from OpenGL.GL import *
@@ -7,7 +8,6 @@ import numpy as np
 
 import Raycaster
 import Renderer
-import Matrix
 import VolumeData
 
 MAX_ITER = 2**30
@@ -20,12 +20,24 @@ class AppController :
         self.isovalue = setting["ISOVALUE"]
 
         # make rederer
-        self.renderer = Renderer.Renderer()
-        gl_buffers = self.renderer.gen_deffered_textures(self.setting["RAY_DOMAIN"])
+        self.renderer = Renderer.Renderer(setting["RAY_DOMAIN"])
+
+
+        self.gl_progs = []
+        for shader_name, shader_file in setting["SHADER"].items() : 
+            prg = Renderer.GLProgram(shader_file[0], shader_file[1])
+            self.gl_progs.append((shader_name, prg))
+        self.current_prog = 0
+        self.gl_prog = self.gl_progs[self.current_prog][1]
+        self.gl_prog.use()
+
+            
+        gl_texture = self.renderer.gen_deffered_textures(self.setting["RAY_DOMAIN"])
+        self.renderer.gen_colormap()
 
         # make frame buffers
-        flag = cl.mem_flags.READ_WRITE
-        self.deffered_buffer = [cl.GLTexture(self.ctx, flag, GL_TEXTURE_2D, 0, buf, 2) for buf in gl_buffers]
+        self.deffered_buffer = [cl.GLTexture(self.ctx, cl.mem_flags.READ_WRITE, GL_TEXTURE_2D, 0, tex_id, 2) 
+                                    for tex_id in gl_texture]
 
         # make raycaster with various kernels
         self.raycasters = []
@@ -51,23 +63,21 @@ class AppController :
             volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
             self.volume_datas.append(((data_name, dim), volume_data))
         self.current_data = 0
-        self.volume_data = self.volume_datas[self.current_data][1]
-        
+        self.volume_data = self.volume_datas[self.current_data][1]        
         self.withQI = False
-
 
         # window setting
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.callback_resize(self.wnd, w, h)
 
-        # set view
-        View = np.eye(4).astype(np.float32)*0.75
-        View[2,2] = -View[2,2]
-        View[3][3] = 1
+        # set default Model matrix
+        Model = glm.mat4()
 
-        self.__update_MVP(np.eye(4).astype(np.float32), View)
-        self.renderer.update_uniform(self.MVP)
+        # set View matrix
+        View = glm.lookAt((0,0,-1), (0,0,0), (0,1,0))
+#        View = glm.mat4()
         self.fov = self.setting["FOV"]
+        self.__update_MVP(Model, View)        
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -95,10 +105,6 @@ class AppController :
                         "Renderer", 
                         None, None)
 
-#        monitors = glfw.get_monitors()
-#        workarea = glfw.get_monitor_workarea(monitors[1])
-#        glfw.set_window_pos(self.wnd, workarea[0]+512, workarea[1]+256)
-
         if not self.wnd :
             glfw.terminate()
             return False
@@ -115,13 +121,24 @@ class AppController :
         return True
 
     def update(self) :
-        msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+        vol_data = self.volume_data.getVolumeData(self.withQI)
+        
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.invMVP, np.float32(self.fov))
-        evt2 = self.raycaster.raycast(self.isovalue, self.deffered_buffer[0], self.volume_data.getVolumeData(self.withQI))
-        evt3 = self.raycaster.evalGradient(self.deffered_buffer[1], self.deffered_buffer[0], self.volume_data.getVolumeData(self.withQI))
+        evt1 = self.raycaster.genRay(self.invMV, np.float32(self.fov))
+        evt2 = self.raycaster.raycast(self.isovalue, 
+                                      self.deffered_buffer[0], 
+                                      vol_data)
+        evt3 = self.raycaster.evalGradient(self.deffered_buffer[1], 
+                                           self.deffered_buffer[0], 
+                                           vol_data)
+        evt4 = self.raycaster.evalHessian(self.deffered_buffer[2], 
+                                          self.deffered_buffer[3], 
+                                          self.deffered_buffer[0], 
+                                          vol_data)
         cl.enqueue_release_gl_objects(self.queue, self.deffered_buffer)
         self.queue.finish()
+        return (evt1, evt2, evt3, evt4)
+
 
     def rendering(self) :
         self.renderer.rendering()
@@ -129,8 +146,9 @@ class AppController :
     def mainloop(self) :
         frameCount = 0
         lastTime = 0
+        evt = []
         while not glfw.window_should_close(self.wnd):
-            self.update()
+            evt.append(self.update())
             self.rendering()
 
             glfw.swap_buffers(self.wnd)
@@ -143,9 +161,22 @@ class AppController :
             if(deltaTime >= 2.0) :
                 fps = frameCount/deltaTime
                 Log.info("{0:.2f} FPS.".format(fps))
+                msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+
+                evt = np.array([(msec(e1),msec(e2),msec(e3),msec(e4)) for e1, e2, e3, e4 in evt])
+                noe = len(evt)
+                evt = np.sum(evt, axis=0)
+                evt = evt/noe
+
+                Log.debug("Ray Generator : {0:.4f} msec".format(evt[0]))
+                Log.debug("Raycasting    : {0:.4f} msec".format(evt[1]))
+                Log.debug("Gradient      : {0:.4f} msec".format(evt[2]))
+                Log.debug("Hessian       : {0:.4f} msec".format(evt[3]))
+
                 glfw.set_window_title(self.wnd, "Renderer({0:.2f} fps)".format(fps))
                 frameCount = 0
                 lastTime   = currentTime
+                evt = []
 
         glfw.terminate()
 
@@ -154,20 +185,19 @@ class AppController :
         glViewport(0, 0, self.current_fbo_size[0], self.current_fbo_size[1])
 
     def __update_MVP(self, M, V) :
-        self.MVP = np.dot(M,V)
+        self.MV = V*M
         self.Model = M
         self.View = V
-        self.invMVP = np.linalg.inv(self.MVP)
-        self.renderer.update_uniform(self.MVP)
+        self.invMV = glm.mat4(np.linalg.inv(self.MV))
+        self.gl_prog.update_uniform(self.MV)
 
     def callback_keyboard(self, window, key, scancode, action, mods) :
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS :
             glfw.set_window_should_close(window, GL_TRUE);
 
         if action == glfw.PRESS :
-            th = np.pi/30
-
             match key :
+                # Change isovalue
                 case glfw.KEY_EQUAL :
                     self.isovalue += 0.01;
                     Log.info("Current Isovalue : {0}".format(self.isovalue))
@@ -176,25 +206,36 @@ class AppController :
                     self.isovalue -= 0.01;
                     Log.info("Current Isovalue : {0}".format(self.isovalue))
 
+                # Select kernel
                 case glfw.KEY_K :
                     self.current_kernel += 1
                     if self.current_kernel >= len(self.raycasters) :
                         self.current_kernel = 0
                     self.volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
                     self.raycaster = self.raycasters[self.current_kernel][1]
-
                     Log.info("Current Kernel : {0}".format(self.raycasters[self.current_kernel][0][0]))
 
+                # Use quasi interpolator
                 case glfw.KEY_Q :
                     self.withQI = not self.withQI
-                    
+
+                # Select shader
+                case glfw.KEY_S :
+                    self.current_prog += 1
+                    if self.current_prog >= len(self.gl_progs) :
+                        self.current_prog = 0
+                    self.gl_prog = self.gl_progs[self.current_prog][1]
+                    self.gl_prog.use()
+                    self.__update_MVP(self.Model, self.View)
+                    Log.info("Current Shader : {0}".format(self.gl_progs[self.current_prog][0]))
+
+                # Select volume data
                 case glfw.KEY_V :
                     self.current_data += 1
                     if self.current_data >= len(self.volume_datas) :
                         self.current_data = 0
                     self.volume_data = self.volume_datas[self.current_data][1]
                     self.volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
-
                     Log.info("Current Volume Data : {0}".format(self.volume_datas[self.current_data][0][0]))
                     
     def __to_arcball_coordinate(self, pos) :
@@ -206,8 +247,8 @@ class AppController :
         axis = axis / np.linalg.norm(axis)
         th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
         if np.any(np.isnan(axis)) or np.isnan(th) :
-            return np.eye(4).astype(np.float32)
-        return Matrix.rotate(axis, th)
+            return glm.mat4()
+        return glm.rotate(glm.mat4(), th, tuple(axis))
 
     def callback_mouse(self, window, btn, act, mods) :
         if btn == glfw.MOUSE_BUTTON_LEFT :
@@ -218,8 +259,8 @@ class AppController :
             if(act == glfw.RELEASE) :
                 try :
                     current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-                    M = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
-                    self.__update_MVP(np.dot(M, self.__last_Model), self.View )
+                    R = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
+                    self.__update_MVP(R*self.__last_Model, self.View)
                 except :
                     Log.info("last cursor position is not defined.")
 
@@ -227,28 +268,26 @@ class AppController :
         elif btn == glfw.MOUSE_BUTTON_RIGHT :
             if(act == glfw.PRESS) :
                 self.__last_cursor_pos = glfw.get_cursor_pos(window)
-                self.__last_View = self.View
+                self.__last_Model = self.Model
             
             if(act == glfw.RELEASE) :
                 try :
                     current_pos = glfw.get_cursor_pos(window)
-                    scale = self.__last_cursor_pos[1]/current_pos[1]
-                    V = matrix.scale(scale, scale, scale)
-                    self.__update_MVP(self.Model, np.dot(self.__last_View, V))
+                    S = glm.mat4()*self.__last_cursor_pos[1]/current_pos[1]
+                    self.__update_MVP(S*self.__last_Model, self.View)
                 except :
                     Log.info("last cursor position is not defined.")
 
     def callback_cursor_position(self, window, xpos, ypos) :
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS :
             current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-            M = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
-            self.__update_MVP(np.dot(M, self.__last_Model), self.View )
+            R = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
+            self.__update_MVP(R*self.__last_Model, self.View)
 
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS :
             current_pos = glfw.get_cursor_pos(window)
-            scale = self.__last_cursor_pos[1]/current_pos[1]
-            V = Matrix.scale(scale, scale, scale)
-            self.__update_MVP(self.Model, np.dot(self.__last_View, V))
+            S = glm.mat4()*self.__last_cursor_pos[1]/current_pos[1]
+            self.__update_MVP(S*self.__last_Model, self.View)
 
         
     def callback_scroll(self, window, xoffset, yoffset) :
@@ -279,10 +318,18 @@ if __name__ == "__main__":
         "VOLUME_DATA" : {"ML_40": ["./data/ML_40_O.raw", (40, 40, 40, 1), np.float32],
                          "ML_80": ["./data/ML_80_O.raw", (80, 80, 80, 1), np.float32]},
         "ISOVALUE" : 0.5,
+        "SHADER" : {"Blinn-Phong" : ["./shader/default.vsh", "./shader/Blinn_Phong.fsh"],
+                    "Min/Max-Curvature" : ["./shader/default.vsh", "./shader/MinMaxCurvature.fsh"],
+                    "Dxx" : ["./shader/default.vsh", "./shader/Dxx.fsh"],
+                    "Dyy" : ["./shader/default.vsh", "./shader/Dyy.fsh"],
+                    "Dzz" : ["./shader/default.vsh", "./shader/Dzz.fsh"],
+                    "Dyz" : ["./shader/default.vsh", "./shader/Dyz.fsh"],
+                    "Dzx" : ["./shader/default.vsh", "./shader/Dzx.fsh"],
+                    "Dxy" : ["./shader/default.vsh", "./shader/Dxy.fsh"]},
         "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC" : ["./kernel/cc6.cl",    (2.0, -1/6, 0.0, 0.0)], 
                            "Second Order FCC Voronoi-Spline": ["./kernel/fcc_v2.cl", (1.0, 0.0, 0.0, 0.0)], 
                            "Third Order FCC Voronoi-Spline" : ["./kernel/fcc_v3.cl", (3/2, 0.0, -1/24, 0.0)]},
-        "FOV" : 60,
+        "FOV" : 45,
     }
 
     ctrl = AppController(setting)

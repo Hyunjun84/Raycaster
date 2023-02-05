@@ -2,33 +2,19 @@ import numpy as np
 from OpenGL.GL  import *
 
 class Renderer :
-    def __init__(self) :
-        self.__create_program__()
-        
-
+    def __init__(self, fbo_size) :
         self.__init_quad__()
-        self.gen_deffered_textures([512,512])
-
-        
-        glUseProgram(self.prg)
-        glClearColor(0.0, 0.0, 0.0, 1.0)
-
-
-        glUniform1i(self.uniforms['tex_position'], 0)
-        glUniform1i(self.uniforms['tex_gradient'], 1)
-        self.update_uniform(np.eye(4).astype(np.float32))
-
-    def __del__(self) :
-        pass
-        #self.__release_quad()
+        self.fbo_size = [0,0]
+        self.gen_deffered_textures(fbo_size)
+        self.gen_colormap()
 
     def gen_deffered_textures(self, fbo_size) :
+        #if self.fbo_size == fbo_size : return self.texid
         internal_format = GL_RGBA32F
         format = GL_RGBA
-
-        self.texid = glGenTextures(2)
-
-        for i in range(2) :
+        self.texid = glGenTextures(4)
+        for i in range(4) :
+            glActiveTexture(GL_TEXTURE0+i)
             glBindTexture(GL_TEXTURE_2D, self.texid[i])
             glPixelStorei(GL_UNPACK_ALIGNMENT,1)
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -38,17 +24,29 @@ class Renderer :
             glTexImage2D(GL_TEXTURE_2D, 0, internal_format, 
                 fbo_size[0], fbo_size[1], 0, 
                 format, GL_FLOAT, np.zeros([fbo_size[0], fbo_size[1], 4]).astype(np.float32))
-        
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, self.texid[0])
-        glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D, self.texid[1])
 
+        
         return self.texid
 
-    def update_uniform(self, MV) :
-        glUniformMatrix4fv(self.uniforms["MV"], 1, GL_FALSE, np.float32(MV))        
-        
+    def gen_colormap(self) :
+         # colormap for min-max curvature
+        colormap = np.array([[ 1, 0, 0], [ 1, 1, 0], [0,1,0],
+                             [.5,.5,.5], [.5,.5,.5], [0,1,1],
+                             [.5,.5,.5], [.5,.5,.5], [0,0,1]], dtype=np.float32)
+
+        self.tex_colormap = glGenTextures(1)
+        glActiveTexture(GL_TEXTURE4)
+        glBindTexture(GL_TEXTURE_2D, self.tex_colormap)
+        glPixelStorei(GL_UNPACK_ALIGNMENT,1)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 3, 3, 0, GL_RGB, GL_FLOAT, colormap)
+        #glBindTexture(GL_TEXTURE_2D, self.tex_colormap)
+        return self.tex_colormap
+
     def __init_quad__(self) :
         quad = np.array([
             [-1.0, -1.0, 0.0, 1.0],
@@ -83,27 +81,29 @@ class Renderer :
         
         glBindVertexArray(0)
 
+    def rendering(self) :
+        glClear(GL_COLOR_BUFFER_BIT)
+        glBindVertexArray(self.__VAO)
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
+        glFinish()
 
-    def __release_quad(self) :
-        glDeleteVertexArrays(1, self.__VAO)
-        glDeleteVertexBuffers(2, self.__VBO)        
+class GLProgram :
+    def __init__(self, vtx_shader, frag_shader) :
+        self.__create_program__(vtx_shader, frag_shader)
+        self.use()
+        glUniform1i(self.uniforms['tex_position'], 0)
+        glUniform1i(self.uniforms['tex_gradient'], 1)
+        glUniform1i(self.uniforms['tex_HessianII'], 2)
+        glUniform1i(self.uniforms['tex_HessianIJ'], 3)
+        glUniform1i(self.uniforms['tex_colormap'], 4)
 
-    def loadShader(self, filename, shd_type) :
-        with open(filename, 'r') as fp : src=fp.read()
-        shd = glCreateShader(shd_type)
-    
-        glShaderSource(shd, (src, ), None)
-        glCompileShader(shd)
-        success = glGetShaderiv(shd, GL_COMPILE_STATUS)
-        if not success :
-            print(glGetShaderInfoLog(shd))
-            return -1;
-        return shd
+        self.update_uniform(np.eye(4).astype(np.float32))
 
-    def __create_program__(self) :
+
+    def __create_program__(self, vtx_shader, frag_shader) :
         self.prg = glCreateProgram()
-        vsh = self.loadShader("shader/default.vsh", GL_VERTEX_SHADER)
-        fsh = self.loadShader("shader/Blinn_Phong.fsh", GL_FRAGMENT_SHADER)
+        vsh = self.loadShader(vtx_shader, GL_VERTEX_SHADER)
+        fsh = self.loadShader(frag_shader, GL_FRAGMENT_SHADER)
         glAttachShader(self.prg, vsh)
         glAttachShader(self.prg, fsh)
         glLinkProgram(self.prg)
@@ -118,11 +118,27 @@ class Renderer :
 
         self.uniforms = {"MV" : glGetUniformLocation(self.prg, 'MV'),
                          "tex_position" : glGetUniformLocation(self.prg, 'tex_position'),
-                         "tex_gradient" : glGetUniformLocation(self.prg, 'tex_gradient'),}
+                         "tex_gradient" : glGetUniformLocation(self.prg, 'tex_gradient'),
+                         "tex_HessianII" : glGetUniformLocation(self.prg, 'tex_HessianII'),
+                         "tex_HessianIJ" : glGetUniformLocation(self.prg, 'tex_HessianIJ'),
+                         "tex_colormap" : glGetUniformLocation(self.prg, 'tex_colormap'),}
         
+    def loadShader(self, filename, shd_type) :
+        with open(filename, 'r') as fp : src=fp.read()
+        shd = glCreateShader(shd_type)
+    
+        glShaderSource(shd, (src, ), None)
+        glCompileShader(shd)
+        success = glGetShaderiv(shd, GL_COMPILE_STATUS)
+        if not success :
+            print(glGetShaderInfoLog(shd))
+            return -1;
+        return shd
 
-    def rendering(self) :
-        glClear(GL_COLOR_BUFFER_BIT)
-        glBindVertexArray(self.__VAO)
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
-        glFinish()
+    def use(self) :
+        glUseProgram(self.prg)
+
+
+    def update_uniform(self, MV) :
+        glUniformMatrix4fv(self.uniforms["MV"], 1, GL_FALSE, np.float32(MV))
+

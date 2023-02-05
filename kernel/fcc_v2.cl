@@ -2,6 +2,7 @@
 
 #define SCALE_F (0.041666667f)
 #define SCALE_G (0.0625f)
+#define SCALE_H (0.0625f)
 
 #define c0 c[0]
 #define c1 c[1]
@@ -142,4 +143,61 @@ __inline float3 eval_g(float3 p_in, __read_only image3d_t vol)
     d *= convert_float3(R);
 
     return d*SCALE_G;
+}
+
+__inline float8 eval_H(float3 p_in, __read_only image3d_t vol)
+{
+
+    // Find origin
+    int3 org = find_origin(p_in);
+    float3 p_local = p_in - convert_float3(org);    // local coordinates
+
+    int3 R = find_R(p_local);
+    p_local = convert_float3(R)*p_local;
+
+    uint8 P = find_P(p_local);
+    p_local = shuffle((float4)(p_local, 0), P.lo).xyz;
+
+    float4 u1 = to_barycentric(p_local);
+    
+    float c[8];
+    fetch_coefficients(c, vol, org, R, P.hi);
+
+    float8 H = (float8)(0);
+    
+    // dxx
+    H.s0 +=      (u1.y*(          (2*(-c5-c7+c1+c3)))+
+                      (u1.z*     (2*(-c5-c7-c6-c4) + 4*(c0+c1))+
+                            u1.w*(2*(-c7-c4+c1+c2))));
+    // dyy
+    H.s1 += u1.x*(     (          (2*(-c5-c4+c3+c2) + 4*(-c0+c6))));
+    H.s1 +=      (u1.y*(          (2*(-c5-c0+c3+c6)))+
+                      (u1.z*     (2*(-c5-c0-c4-c1) + 4*(c7+c6))+
+                            u1.w*(2*(-c0-c4+c2+c6))));
+    // dzz
+    H.s2 += u1.x*(     (          (2*(c5+c3+c2+c4) + 4*(-c7-c0))));
+    H.s2 +=      (u1.y*(          (2*(c5+c3+c2+c4) + 4*(-c7-c0)))+
+                      (u1.z*     (2*(-c7-c0-c1-c6) + 4*(c5+c4))+
+                            u1.w*(2*(c5+c3+c2+c4) + 4*(-c7-c0))));
+
+    // dyz
+    H.s4 += u1.x*(     (          (2*(-c6-c3-c2+c7) + 4*(c0))));
+    H.s4 +=      (u1.y*(          (1*(-c6-c4-c1-c2+c5) + 3*(-c3+c7+c0)))+
+                      (     u1.w*(1*(-c1-c3-c6-c5+c4) + 3*(-c2+c0+c7))));
+
+    // dzx
+    H.s5 += u1.x*(     (          (2*(-c4-c3+c5+c2))));
+    H.s5 +=      (u1.y*(          (1*(-c1-c6-c4+c7+c0+c2) + 3*(-c3+c5)))+
+                      (     u1.w*(1*(-c7-c0-c3+c1+c6+c5) + 3*(-c4+c2))));
+
+    // dxy
+    H.s6 += u1.x*(     (          (2*(-c5-c2+c3+c4))));
+    H.s6 +=      (u1.y*(          (1*(-c7-c0-c2+c4+c1+c6) + 3*(-c5+c3)))+
+                      (     u1.w*(1*(-c5-c1-c6+c3+c7+c0) + 3*(-c2+c4))));
+
+    H.lo = shuffle(H.lo, P.hi);
+    H.hi = shuffle(H.hi, P.hi);
+    H.hi.xyz *= convert_float3(R);
+
+    return H*SCALE_H;
 }

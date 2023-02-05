@@ -53,7 +53,7 @@ class Raycaster :
             arg1=buf_vol,
             arg2=self.rays,
             arg3=np.float32([1,1,1,1]),
-            arg4=np.int32(dim),
+            arg4=np.float32(dim),
             arg5=np.float32(iso),
         )
 
@@ -64,10 +64,21 @@ class Raycaster :
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=buf_grad, 
-            arg1=buf_vol,
-            arg2=buf_pos,
-            arg3=np.int32(dim))
+            arg1=buf_pos,
+            arg2=buf_vol,
+            arg3=np.float32(dim))
 
+    def evalHessian(self, buf_H1, buf_H2, buf_pos, volume_data) :
+        buf_vol, dim = volume_data
+        return self.prg.evalHessian(
+            queue=self.queue, 
+            global_size=self.dim_ray, 
+            local_size=None, 
+            arg0=buf_H1, 
+            arg1=buf_H2,
+            arg2=buf_pos,
+            arg3=buf_vol,
+            arg4=np.float32(dim))
 
 if __name__ == "__main__":
     import logging
