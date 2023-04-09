@@ -1,16 +1,16 @@
+import functools as ft
 import glfw
-import logging
 import glm
+import logging
+import numpy as np
+from OpenGL.GL import *
 import pyopencl as cl
 from pyopencl.tools import get_gl_sharing_context_properties
-from OpenGL.GL import *
-import numpy as np
 
 import Raycaster
 import Renderer
 import VolumeData
 
-MAX_ITER = 2**30
 class AppController :
     def __init__(self, setting) :
         self.setting=setting
@@ -235,7 +235,7 @@ class AppController :
                         self.current_prog = 0
                     self.gl_prog = self.gl_progs[self.current_prog][1]
                     self.gl_prog.use()
-                    self.__update_MVP(self.Model, self.View)
+                    self.__update_MVP(self.Model, self.View, self.Projection)
                     Log.info("Current Shader : {0}".format(self.gl_progs[self.current_prog][0]))
 
                 # Select volume data
@@ -257,10 +257,12 @@ class AppController :
         th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
         
         if np.any(np.isnan(axis)) or np.isnan(th) :
-            return glm.mat4()
+            M = glm.mat4()
+        else : 
+            M = glm.rotate(glm.mat4(), th, tuple(axis))
         
-        return glm.rotate(glm.mat4(), th, tuple(axis))
-
+        return M
+        
     def callback_mouse(self, window, btn, act, mods) :
         if btn == glfw.MOUSE_BUTTON_LEFT :
             if(act == glfw.PRESS) :
@@ -280,8 +282,9 @@ class AppController :
 
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS :
             current_pos = glfw.get_cursor_pos(window)
-            state = glfw.get_key(window, glfw.KEY_RIGHT_SHIFT) or glfw.get_key(window, glfw.KEY_LEFT_SHIFT)
-            if state == glfw.PRESS :
+            state = any([glfw.get_key(window, key)==glfw.PRESS 
+                            for key in [glfw.KEY_RIGHT_SHIFT, glfw.KEY_LEFT_SHIFT]])
+            if state :
                 t = [current_pos[0]-self.__last_cursor_pos[0],
                     -current_pos[1]+self.__last_cursor_pos[1]]
                 M = glm.translate(glm.mat4(),[t[0]/100,t[1]/100,0])
@@ -320,7 +323,8 @@ if __name__ == "__main__":
     Log.setLevel(logging.DEBUG)
     hFileLog = logging.FileHandler("./output/raycaster.log")
     hStreamLog = logging.StreamHandler()
-    formatter = logging.Formatter(fmt='[%(levelname)s][%(asctime)s.%(msecs)03d][%(funcName)s():%(lineno)d] %(message)s', datefmt='%H:%M:%S')
+    formatter = logging.Formatter(fmt='[%(levelname)s][%(asctime)s.%(msecs)03d][%(funcName)s():%(lineno)d] %(message)s', 
+                              datefmt='%H:%M:%S')
     hFileLog.setFormatter(formatter)
     hStreamLog.setFormatter(formatter)
     Log.addHandler(hFileLog)
