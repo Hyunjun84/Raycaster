@@ -1,6 +1,7 @@
 import numpy as np
 import pyopencl as cl
 import logging
+import glm
 
 class Raycaster :
     def __init__(self, ctx, devices, queue, kernel_src, resolution) :
@@ -33,14 +34,14 @@ class Raycaster :
         self.queue.finish()
         print(np.min(buf, axis=0), np.max(buf, axis=0))
 
-    def genRay(self, MVP, fov) :
+    def genRay(self, MVP) :
         return self.prg.genRay(
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=self.rays,
-            arg1=MVP,
-            arg2=fov
+            #arg1=glm.transpose(MVP)
+            arg1=MVP
         )
 
     def raycast(self, iso, buf_pos, volume_data) :

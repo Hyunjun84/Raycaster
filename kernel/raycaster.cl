@@ -14,11 +14,10 @@ __inline float8 eval_H(float3 p, __read_only image3d_t vol);
 
 __inline float4 MDotV(float16 m, float4 v) 
 {
-	return (float4)(dot(m.s0123, v),dot(m.s4567, v), dot(m.s89ab, v), dot(m.scdef, v));
-    //return (float4)(dot(m.s038c, v),dot(m.s149d, v), dot(m.s24ae, v), dot(m.s35bf, v));
+    return (float4)(dot(m.s048c, v),dot(m.s159d, v), dot(m.s26ae, v), dot(m.s37bf, v));
 }
 
-__kernel void genRay(__global float8* ray, float16 M, float fov)
+__kernel void genRay(__global float8* ray, float16 M)
 {
 	int2 idx = (int2)(get_global_id(0), get_global_id(1));
 	int2 sz  = (int2)(get_global_size(0), get_global_size(1));
@@ -28,21 +27,19 @@ __kernel void genRay(__global float8* ray, float16 M, float fov)
 	float4 b;
 	float4 e;
 
-    if(fov == 0) { // orthogonal projection
-        b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); //[-1...1]^3
-        e = (float4)(b.xy, 1.0f, 1.0f);
-    } else {
-        b = (float4)(0, 0, -1-sqrt(2.0f)/tan(fov*0.5f/180.0f*M_PI_F), 1.0f);
-        e = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f);
-    }
+    b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); //[-1...1]^3
+    e = (float4)(b.xy, 1.0f, 1.0f);
 
 	b = MDotV(M, b);
     e = MDotV(M, e);
 
+    b = b/b.w;
+    e = e/e.w;
+
     float4 d = (float4)(normalize(e.xyz-b.xyz), 0);
 
     float2 hit_yz = (float2)(-1-b.x, 1-b.x)/d.x;
-    float2 hit_zx = (float2)(-1-b.y, 1-b.y)/d.y;
+    float2 hit_zx = (float2)(-1-b.y, 1-b.y)/d.y; 
     float2 hit_xy = (float2)(-1-b.z, 1-b.z)/d.z;
 
     hit_yz = (float2)(min(hit_yz.x, hit_yz.y), max(hit_yz.x, hit_yz.y));
@@ -56,7 +53,7 @@ __kernel void genRay(__global float8* ray, float16 M, float fov)
     if(any(isnan(bound)) || any(isinf(bound)) || (bound.x > bound.y))
         bound = (float2)(0);
 
-    ray[id] = (float8)(b.xyz+d.xyz*bound.x, 1, b.xyz+d.xyz*bound.y, 1);
+    ray[id] = (float8)(b.xyz+d.xyz*bound.x, b.w, b.xyz+d.xyz*bound.y, e.w);
 }
 
 

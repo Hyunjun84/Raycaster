@@ -70,14 +70,20 @@ class AppController :
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.callback_resize(self.wnd, w, h)
 
+        self.fov = self.setting["FOV"]
+        
+        d2r = lambda th : th/180*np.pi
+
         # set default Model matrix
         Model = glm.mat4()
 
         # set View matrix
-        View = glm.lookAt((0,0,-1), (0,0,0), (0,1,0))
-#        View = glm.mat4()
-        self.fov = self.setting["FOV"]
-        self.__update_MVP(Model, View)        
+        View = glm.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
+
+        # set Projection matrix
+        Projection = glm.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
+        
+        self.__update_MVP(Model, View, Projection) 
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -124,7 +130,7 @@ class AppController :
         vol_data = self.volume_data.getVolumeData(self.withQI)
         
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.invMV, np.float32(self.fov))
+        evt1 = self.raycaster.genRay(self.invMVP)
         evt2 = self.raycaster.raycast(self.isovalue, 
                                       self.deffered_buffer[0], 
                                       vol_data)
@@ -184,11 +190,14 @@ class AppController :
         self.current_fbo_size = glfw.get_framebuffer_size(window)
         glViewport(0, 0, self.current_fbo_size[0], self.current_fbo_size[1])
 
-    def __update_MVP(self, M, V) :
+    def __update_MVP(self, M, V, P) :
         self.MV = V*M
+        self.MVP = P*V*M
         self.Model = M
         self.View = V
-        self.invMV = glm.mat4(np.linalg.inv(self.MV))
+        self.Projection = P
+        self.invMV = glm.inverse(self.MV)
+        self.invMVP = glm.inverse(self.MVP)
         self.gl_prog.update_uniform(self.MV)
 
     def callback_keyboard(self, window, key, scancode, action, mods) :
@@ -246,48 +255,40 @@ class AppController :
         axis = np.cross(last_pos, cur_pos)
         axis = axis / np.linalg.norm(axis)
         th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
+        
         if np.any(np.isnan(axis)) or np.isnan(th) :
             return glm.mat4()
+        
         return glm.rotate(glm.mat4(), th, tuple(axis))
 
     def callback_mouse(self, window, btn, act, mods) :
         if btn == glfw.MOUSE_BUTTON_LEFT :
             if(act == glfw.PRESS) :
-                self.__last_cursor_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
+                self.__last_arcball_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
                 self.__last_Model = self.Model
-                
-            if(act == glfw.RELEASE) :
-                try :
-                    current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-                    R = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
-                    self.__update_MVP(R*self.__last_Model, self.View)
-                except :
-                    Log.info("last cursor position is not defined.")
-
-
+            
         elif btn == glfw.MOUSE_BUTTON_RIGHT :
             if(act == glfw.PRESS) :
                 self.__last_cursor_pos = glfw.get_cursor_pos(window)
                 self.__last_Model = self.Model
-            
-            if(act == glfw.RELEASE) :
-                try :
-                    current_pos = glfw.get_cursor_pos(window)
-                    S = glm.mat4()*self.__last_cursor_pos[1]/current_pos[1]
-                    self.__update_MVP(S*self.__last_Model, self.View)
-                except :
-                    Log.info("last cursor position is not defined.")
 
     def callback_cursor_position(self, window, xpos, ypos) :
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS :
             current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-            R = self.__rotate_arcball(self.__last_cursor_pos, current_pos)
-            self.__update_MVP(R*self.__last_Model, self.View)
+            R = self.__rotate_arcball(self.__last_arcball_pos, current_pos)
+            self.__update_MVP(R*self.__last_Model, self.View, self.Projection)
 
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS :
             current_pos = glfw.get_cursor_pos(window)
-            S = glm.mat4()*self.__last_cursor_pos[1]/current_pos[1]
-            self.__update_MVP(S*self.__last_Model, self.View)
+            state = glfw.get_key(window, glfw.KEY_RIGHT_SHIFT) or glfw.get_key(window, glfw.KEY_LEFT_SHIFT)
+            if state == glfw.PRESS :
+                t = [current_pos[0]-self.__last_cursor_pos[0],
+                    -current_pos[1]+self.__last_cursor_pos[1]]
+                M = glm.translate(glm.mat4(),[t[0]/100,t[1]/100,0])
+            else :
+                s = self.__last_cursor_pos[1]/current_pos[1]
+                M = glm.scale(glm.mat4(),[s,s,s])
+            self.__update_MVP(M*self.__last_Model, self.View, self.Projection)
 
         
     def callback_scroll(self, window, xoffset, yoffset) :
@@ -298,6 +299,20 @@ class AppController :
 
         if not old_fov == self.fov :
             Log.info("Current FOV : {0}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
+        else :
+            return
+
+        d2r = lambda th : th/180*np.pi
+
+        # set View matrix
+        if self.fov == 0 :
+            View = glm.lookAt((0,0,2), (0,0,0), (0,1,0))
+            Projection = glm.ortho(-1, 1, -1, 1, -1, 1)
+        else :
+            View = glm.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
+            Projection = glm.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
+
+        self.__update_MVP(self.Model, View, Projection)
 
 
 if __name__ == "__main__":
