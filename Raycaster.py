@@ -34,14 +34,14 @@ class Raycaster :
         self.queue.finish()
         print(np.min(buf, axis=0), np.max(buf, axis=0))
 
-    def genRay(self, MVP) :
+    def genRay(self, MVP, data_ratio) :
         return self.prg.genRay(
             queue=self.queue, 
             global_size=self.dim_ray, 
             local_size=None, 
-            arg0=self.rays,
-            #arg1=glm.transpose(MVP)
-            arg1=MVP
+            arg0=self.rays,            
+            arg1=MVP,
+            arg2=np.float32(data_ratio)
         )
 
     def raycast(self, iso, buf_pos, volume_data) :

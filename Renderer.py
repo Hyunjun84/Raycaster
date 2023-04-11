@@ -96,6 +96,7 @@ class GLProgram :
         glUniform1i(self.uniforms['tex_HessianII'], 2)
         glUniform1i(self.uniforms['tex_HessianIJ'], 3)
         glUniform1i(self.uniforms['tex_colormap'], 4)
+        
 
         self.update_uniform(np.eye(4).astype(np.float32))
 
@@ -121,7 +122,9 @@ class GLProgram :
                          "tex_gradient" : glGetUniformLocation(self.prg, 'tex_gradient'),
                          "tex_HessianII" : glGetUniformLocation(self.prg, 'tex_HessianII'),
                          "tex_HessianIJ" : glGetUniformLocation(self.prg, 'tex_HessianIJ'),
-                         "tex_colormap" : glGetUniformLocation(self.prg, 'tex_colormap'),}
+                         "tex_colormap" : glGetUniformLocation(self.prg, 'tex_colormap'),
+                         "orientation" : glGetUniformLocation(self.prg, 'orientation'),
+                         }
         
     def loadShader(self, filename, shd_type) :
         with open(filename, 'r') as fp : src=fp.read()
@@ -138,7 +141,9 @@ class GLProgram :
     def use(self) :
         glUseProgram(self.prg)
 
-
+    def setDataOrientation(self, orientation) :
+        glUniform1i(self.uniforms["orientation"], np.int32(orientation))
+    
     def update_uniform(self, MV) :
         glUniformMatrix4fv(self.uniforms["MV"], 1, GL_FALSE, np.float32(MV))
 

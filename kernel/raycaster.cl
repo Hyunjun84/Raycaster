@@ -17,18 +17,15 @@ __inline float4 MDotV(float16 m, float4 v)
     return (float4)(dot(m.s048c, v),dot(m.s159d, v), dot(m.s26ae, v), dot(m.s37bf, v));
 }
 
-__kernel void genRay(__global float8* ray, float16 M)
+__kernel void genRay(__global float8* ray, float16 M, float4 data_ratio)
 {
 	int2 idx = (int2)(get_global_id(0), get_global_id(1));
 	int2 sz  = (int2)(get_global_size(0), get_global_size(1));
 
 	int id = sz.x*idx.y+idx.x;
 
-	float4 b;
-	float4 e;
-
-    b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); //[-1...1]^3
-    e = (float4)(b.xy, 1.0f, 1.0f);
+	float4 b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); 
+	float4 e = (float4)(b.xy, 1.0f, 1.0f);
 
 	b = MDotV(M, b);
     e = MDotV(M, e);
@@ -38,19 +35,19 @@ __kernel void genRay(__global float8* ray, float16 M)
 
     float4 d = (float4)(normalize(e.xyz-b.xyz), 0);
 
-    float2 hit_yz = (float2)(-1-b.x, 1-b.x)/d.x;
-    float2 hit_zx = (float2)(-1-b.y, 1-b.y)/d.y; 
-    float2 hit_xy = (float2)(-1-b.z, 1-b.z)/d.z;
+    float2 hit_yz = (float2)(-data_ratio.x-b.x, data_ratio.x-b.x)/d.x;
+    float2 hit_zx = (float2)(-data_ratio.y-b.y, data_ratio.y-b.y)/d.y; 
+    float2 hit_xy = (float2)(-data_ratio.z-b.z, data_ratio.z-b.z)/d.z;
 
     hit_yz = (float2)(min(hit_yz.x, hit_yz.y), max(hit_yz.x, hit_yz.y));
     hit_zx = (float2)(min(hit_zx.x, hit_zx.y), max(hit_zx.x, hit_zx.y));
     hit_xy = (float2)(min(hit_xy.x, hit_xy.y), max(hit_xy.x, hit_xy.y));
 
-    float2 bound =  (float2)(
+    float2 bound = (float2)(
         max(max(hit_yz.x, hit_zx.x), hit_xy.x),
         min(min(hit_yz.y, hit_zx.y), hit_xy.y));
    
-    if(any(isnan(bound)) || any(isinf(bound)) || (bound.x > bound.y))
+    if(any(isnan(bound)) || any(isinf(bound)) || (bound.x>bound.y))
         bound = (float2)(0);
 
     ray[id] = (float8)(b.xyz+d.xyz*bound.x, b.w, b.xyz+d.xyz*bound.y, e.w);
@@ -64,8 +61,10 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
 
 	float8 ray = Rays[sz.x*id.y+id.x];
 
-	float3 p = dim.xyz*(0.5f*ray.s012+0.5f)-0.5f; // [0...fdim]^3
-    float3 e = dim.xyz*(0.5f*ray.s456+0.5f)-0.5f; // [0...fdim]^3
+    float3 data_ratio = dim.xyz/max(max(dim.x, dim.y), dim.z);
+
+	float3 p = (ray.s012/data_ratio+1.f)*0.5*dim.xyz-0.5f;
+    float3 e = (ray.s456/data_ratio+1.f)*0.5*dim.xyz-0.5f; // [0...fdim]^3
 	float3 p_prev;
 
 	float step = 0.1f;
@@ -120,7 +119,7 @@ __kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only im
 
     float3 grad = (float3)(0);
     if(p.w!=0){
-        float delta = 0.1;
+        float delta = 0.1f;
         float d011 = eval(p.xyz-(float3)(delta, 0, 0), vol);
         float d211 = eval(p.xyz+(float3)(delta, 0, 0), vol);
         float d101 = eval(p.xyz-(float3)(0, delta, 0), vol);
@@ -140,10 +139,20 @@ __kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_
     p.xyz = (p.xyz+0.5f)*dim.xyz;
 
     float8 H = (float8)(0);
+    if(p.w!=0) H = eval_H(p.xyz, vol);
+
+    write_imagef(Hessian1, id, H.lo*dim*dim);
+    write_imagef(Hessian2, id, H.hi*dim.yzxw*dim.zxyw);
+}
+
+__kernel void evalFiniteHessian(__write_only image2d_t Hessian1, __write_only image2d_t Hessian2, __read_only image2d_t Position, __read_only image3d_t vol, float4 dim)
+{
+    int2 id = (int2)(get_global_id(0), get_global_id(1));
+    float4 p = read_imagef(Position, sp, id);
+    p.xyz = (p.xyz+0.5f)*dim.xyz;
+
+    float8 H = (float8)(0);
     if(p.w!=0) {
-#if 1
-        H = eval_H(p.xyz, vol);
-#else
         float delta = 0.05;
         float f111 = eval(p.xyz, vol);
 
@@ -168,16 +177,15 @@ __kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_
         float f212 = eval(p.xyz + (float3)( delta,     0, delta), vol);
         float f221 = eval(p.xyz + (float3)( delta, delta,     0), vol);
 
-        float _1_over_delta_square = 1.0/(delta*delta);
+        float _1_over_delta_square = 1.0f/(delta*delta);
 
-        H.lo.xyz = (float3)((f211 - 2.0*f111 + f011),
-                            (f121 - 2.0*f111 + f101),
-                            (f112 - 2.0*f111 + f110))*_1_over_delta_square;
+        H.lo.xyz = (float3)((f211 - 2.0f*f111 + f011),
+                            (f121 - 2.0f*f111 + f101),
+                            (f112 - 2.0f*f111 + f110))*_1_over_delta_square;
 
         H.hi.xyz = 0.25*(float3)((f122 - f120 - f102 + f100),
                                  (f212 - f210 - f012 + f010),
                                  (f221 - f201 - f021 + f001))*_1_over_delta_square;
-#endif
     }
 
     write_imagef(Hessian1, id, H.lo*dim*dim);

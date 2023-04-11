@@ -8,6 +8,7 @@ uniform sampler2D tex_position;
 uniform sampler2D tex_gradient;
 //uniform sampler2D tex_colormap;
 uniform mat4        MV;
+uniform int orientation;
 
 struct TMaterial
 {
@@ -106,7 +107,7 @@ void main() {
 	vec3	g = -normalize(texture(tex_gradient, vTexCoord).xyz);
 
 	if(p.w != 0.0f) {
-		fColor = shade_Blinn_Phong(normalize(mat3(MV)*(p.w*g)), MV*vec4(p.xyz,1), uMaterial[int(0.5*(1.0-p.w))], uLight);
+		fColor = shade_Blinn_Phong(normalize(mat3(MV)*(p.w*g)), MV*vec4(p.xyz,1), uMaterial[int(0.5*(1.0-p.w*orientation))], uLight);
 	} else {
 		fColor = vec4(0,0,0,1);
 	}

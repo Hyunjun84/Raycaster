@@ -1,7 +1,11 @@
 import logging 
 import numpy as np
 import pyopencl as cl
+from enum import Enum
 
+class DataType(Enum) :
+    INTENSITY = 0,
+    SDF = 1
 
 class VolumeData :
     def __init__(self, ctx, devices, queue) :
@@ -21,9 +25,11 @@ class VolumeData :
         if withQI : return (self.d_data_QI, self.dim)
         else : return (self.d_data, self.dim)
 
-    def uploadVolumeData(self, FILE, dim, typ) :
+    def uploadVolumeData(self, FILE, dim, typ, ort) :
         self.h_data = np.fromfile(FILE, dtype=typ).astype(np.float32)
         self.dim = dim
+        self.data_ratio = [i / max(self.dim) for i in self.dim]
+        self.orientation = ort
 
         self.Log.info("Volume data infomation :")
         self.Log.info("\tdimension : ({0}, {1}, {2})".format(*dim))

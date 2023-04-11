@@ -17,8 +17,6 @@ class AppController :
         self.__init_window__()
         self.__init_cl__()
 
-        self.isovalue = setting["ISOVALUE"]
-
         # make rederer
         self.renderer = Renderer.Renderer(setting["RAY_DOMAIN"])
 
@@ -57,13 +55,16 @@ class AppController :
         
         # load volume data
         self.volume_datas = []
-        for data_name, (FILE_PATH, dim, typ) in self.setting["VOLUME_DATA"].items() :
+        for data_name, (FILE_PATH, dim, typ, ort, iso) in self.setting["VOLUME_DATA"].items() :
             volume_data = VolumeData.VolumeData(self.ctx, self.devices, self.queue)
-            volume_data.uploadVolumeData(FILE_PATH, dim, typ)
+            volume_data.uploadVolumeData(FILE_PATH, dim, typ, ort)
             volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
-            self.volume_datas.append(((data_name, dim), volume_data))
+            self.volume_datas.append(((data_name, dim, iso), volume_data))
+
         self.current_data = 0
-        self.volume_data = self.volume_datas[self.current_data][1]        
+        self.volume_data = self.volume_datas[self.current_data][1]
+        self.gl_prog.setDataOrientation(self.volume_data.orientation)
+        self.isovalue = self.volume_datas[self.current_data][0][2]        
         self.withQI = False
 
         # window setting
@@ -130,7 +131,7 @@ class AppController :
         vol_data = self.volume_data.getVolumeData(self.withQI)
         
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.invMVP)
+        evt1 = self.raycaster.genRay(self.invMVP, self.volume_data.data_ratio)
         evt2 = self.raycaster.raycast(self.isovalue, 
                                       self.deffered_buffer[0], 
                                       vol_data)
@@ -152,9 +153,10 @@ class AppController :
     def mainloop(self) :
         frameCount = 0
         lastTime = 0
-        evt = []
+        #evt = []
         while not glfw.window_should_close(self.wnd):
-            evt.append(self.update())
+            #evt.append(self.update())
+            self.update()
             self.rendering()
 
             glfw.swap_buffers(self.wnd)
@@ -167,22 +169,22 @@ class AppController :
             if(deltaTime >= 2.0) :
                 fps = frameCount/deltaTime
                 Log.info("{0:.2f} FPS.".format(fps))
-                msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+                #msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
 
-                evt = np.array([(msec(e1),msec(e2),msec(e3),msec(e4)) for e1, e2, e3, e4 in evt])
-                noe = len(evt)
-                evt = np.sum(evt, axis=0)
-                evt = evt/noe
+                #evt = np.array([(msec(e1),msec(e2),msec(e3),msec(e4)) for e1, e2, e3, e4 in evt])
+                #noe = len(evt)
+                #evt = np.sum(evt, axis=0)
+                #evt = evt/noe
 
-                Log.debug("Ray Generator : {0:.4f} msec".format(evt[0]))
-                Log.debug("Raycasting    : {0:.4f} msec".format(evt[1]))
-                Log.debug("Gradient      : {0:.4f} msec".format(evt[2]))
-                Log.debug("Hessian       : {0:.4f} msec".format(evt[3]))
+                #Log.debug("Ray Generator : {0:.4f} msec".format(evt[0]))
+                #Log.debug("Raycasting    : {0:.4f} msec".format(evt[1]))
+                #Log.debug("Gradient      : {0:.4f} msec".format(evt[2]))
+                #Log.debug("Hessian       : {0:.4f} msec".format(evt[3]))
 
                 glfw.set_window_title(self.wnd, "Renderer({0:.2f} fps)".format(fps))
                 frameCount = 0
                 lastTime   = currentTime
-                evt = []
+                #evt = []
 
         glfw.terminate()
 
@@ -191,11 +193,11 @@ class AppController :
         glViewport(0, 0, self.current_fbo_size[0], self.current_fbo_size[1])
 
     def __update_MVP(self, M, V, P) :
-        self.MV = V*M
-        self.MVP = P*V*M
         self.Model = M
         self.View = V
         self.Projection = P
+        self.MV = V*M
+        self.MVP = P*V*M
         self.invMV = glm.inverse(self.MV)
         self.invMVP = glm.inverse(self.MVP)
         self.gl_prog.update_uniform(self.MV)
@@ -245,7 +247,11 @@ class AppController :
                         self.current_data = 0
                     self.volume_data = self.volume_datas[self.current_data][1]
                     self.volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
+
+                    self.isovalue = self.volume_datas[self.current_data][0][2]
+                    self.gl_prog.setDataOrientation(self.volume_data.orientation)
                     Log.info("Current Volume Data : {0}".format(self.volume_datas[self.current_data][0][0]))
+
                     
     def __to_arcball_coordinate(self, pos) :
         pos = ((pos[0]-256)/256, (256-pos[1])/256)
@@ -266,31 +272,28 @@ class AppController :
     def callback_mouse(self, window, btn, act, mods) :
         if btn == glfw.MOUSE_BUTTON_LEFT :
             if(act == glfw.PRESS) :
-                self.__last_arcball_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-                self.__last_Model = self.Model
-            
-        elif btn == glfw.MOUSE_BUTTON_RIGHT :
-            if(act == glfw.PRESS) :
                 self.__last_cursor_pos = glfw.get_cursor_pos(window)
+                self.__last_arcball_pos = self.__to_arcball_coordinate(self.__last_cursor_pos)
                 self.__last_Model = self.Model
 
     def callback_cursor_position(self, window, xpos, ypos) :
+        check_key = lambda key :any([glfw.get_key(window, k)==glfw.PRESS for k in key])
         if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS :
-            current_pos = self.__to_arcball_coordinate(glfw.get_cursor_pos(window))
-            R = self.__rotate_arcball(self.__last_arcball_pos, current_pos)
-            self.__update_MVP(R*self.__last_Model, self.View, self.Projection)
-
-        if glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS :
             current_pos = glfw.get_cursor_pos(window)
-            state = any([glfw.get_key(window, key)==glfw.PRESS 
-                            for key in [glfw.KEY_RIGHT_SHIFT, glfw.KEY_LEFT_SHIFT]])
-            if state :
+            
+            if check_key([glfw.KEY_RIGHT_SHIFT, glfw.KEY_LEFT_SHIFT]) : # Translate
                 t = [current_pos[0]-self.__last_cursor_pos[0],
                     -current_pos[1]+self.__last_cursor_pos[1]]
                 M = glm.translate(glm.mat4(),[t[0]/100,t[1]/100,0])
-            else :
+
+            elif check_key([glfw.KEY_RIGHT_CONTROL, glfw.KEY_LEFT_CONTROL]) : # Scale
                 s = self.__last_cursor_pos[1]/current_pos[1]
                 M = glm.scale(glm.mat4(),[s,s,s])
+
+            else : # Rotation
+                current_arcball_pos = self.__to_arcball_coordinate(current_pos)
+                M = self.__rotate_arcball(self.__last_arcball_pos, current_arcball_pos)
+       
             self.__update_MVP(M*self.__last_Model, self.View, self.Projection)
 
         
@@ -301,7 +304,7 @@ class AppController :
         if self.fov>90 : self.fov = 90
 
         if not old_fov == self.fov :
-            Log.info("Current FOV : {0}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
+            Log.info("Current FOV : {0:.2f}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
         else :
             return
 
@@ -333,10 +336,11 @@ if __name__ == "__main__":
     setting = {
         "WIN_WIDTH" : 512,
         "WIN_HEIGHT" : 512,
-        "RAY_DOMAIN" : (512,512),
-        "VOLUME_DATA" : {"ML_40": ["./data/ML_40_O.raw", (40, 40, 40, 1), np.float32],
-                         "ML_80": ["./data/ML_80_O.raw", (80, 80, 80, 1), np.float32]},
-        "ISOVALUE" : 0.5,
+        "RAY_DOMAIN" : (512, 512),
+        "VOLUME_DATA" : {"ML_40": ["./data/ML_40_O.raw", (40, 40, 40, 1), np.float32, 1, 0.5],
+                         "ML_80": ["./data/ML_80_O.raw", (80, 80, 80, 1), np.float32, 1, 0.5],
+                         "Dragon": ["./data/Dragon_256_O.raw", (256,256,128, 1), np.float32, -1, 0]
+                         },
         "SHADER" : {"Blinn-Phong" : ["./shader/default.vsh", "./shader/Blinn_Phong.fsh"],
                     "Min/Max-Curvature" : ["./shader/default.vsh", "./shader/MinMaxCurvature.fsh"],
                     "Dxx" : ["./shader/default.vsh", "./shader/Dxx.fsh"],
