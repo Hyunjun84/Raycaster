@@ -3,10 +3,6 @@ import numpy as np
 import pyopencl as cl
 from enum import Enum
 
-class DataType(Enum) :
-    INTENSITY = 0,
-    SDF = 1
-
 class VolumeData :
     def __init__(self, ctx, devices, queue) :
         self.ctx = ctx
@@ -25,15 +21,19 @@ class VolumeData :
         if withQI : return (self.d_data_QI, self.dim)
         else : return (self.d_data, self.dim)
 
-    def uploadVolumeData(self, FILE, dim, typ, ort) :
-        self.h_data = np.fromfile(FILE, dtype=typ).astype(np.float32)
+    def uploadVolumeData(self, FILE_PATH, dim, dtype, orientation, scale) :
+        self.h_data = np.fromfile(FILE_PATH, dtype=dtype).astype(np.float32)
         self.dim = dim
-        self.data_ratio = [i / max(self.dim) for i in self.dim]
-        self.orientation = ort
+        self.scale = scale
+        self.orientation = orientation
+        self.data_ratio = [i*j / max(self.dim) for i,j in zip(self.dim, self.scale)]
 
         self.Log.info("Volume data infomation :")
-        self.Log.info("\tdimension : ({0}, {1}, {2})".format(*dim))
+        self.Log.info("\tresolution : ({0}, {1}, {2})".format(*dim))
         self.Log.info("\trange : {0:.4f} - {1:.4f}".format(np.min(self.h_data), np.max(self.h_data)))
+        self.Log.info("\tscale : ({0}, {1}, {2})".format(*scale))
+        self.Log.info("\tnormalized domain : ({0}, {1}, {2})".format(*self.data_ratio))
+
         
         if not self.d_data == None : self.d_data.release()
         if not self.d_data_QI == None : self.d_data_QI.release()

@@ -40,11 +40,11 @@ class Raycaster :
             global_size=self.dim_ray, 
             local_size=None, 
             arg0=self.rays,            
-            arg1=MVP,
+            arg1=np.float32(MVP),
             arg2=np.float32(data_ratio)
         )
 
-    def raycast(self, iso, buf_pos, volume_data) :
+    def raycast(self, iso, buf_pos, volume_data, data_ratio) :
         buf_vol, dim = volume_data
         return self.prg.raycast(
             queue=self.queue, 
@@ -53,12 +53,12 @@ class Raycaster :
             arg0=buf_pos,
             arg1=buf_vol,
             arg2=self.rays,
-            arg3=np.float32([1,1,1,1]),
+            arg3=np.float32(data_ratio),
             arg4=np.float32(dim),
             arg5=np.float32(iso),
         )
 
-    def evalGradient(self, buf_grad, buf_pos, volume_data) :
+    def evalGradient(self, buf_grad, buf_pos, volume_data, data_ratio) :
         buf_vol, dim = volume_data
         return self.prg.evalGradient(
             queue=self.queue, 
@@ -67,9 +67,10 @@ class Raycaster :
             arg0=buf_grad, 
             arg1=buf_pos,
             arg2=buf_vol,
-            arg3=np.float32(dim))
+            arg3=np.float32(dim),
+            arg4=np.float32(data_ratio))
 
-    def evalHessian(self, buf_H1, buf_H2, buf_pos, volume_data) :
+    def evalHessian(self, buf_H1, buf_H2, buf_pos, volume_data, data_ratio) :
         buf_vol, dim = volume_data
         return self.prg.evalHessian(
             queue=self.queue, 
@@ -79,7 +80,8 @@ class Raycaster :
             arg1=buf_H2,
             arg2=buf_pos,
             arg3=buf_vol,
-            arg4=np.float32(dim))
+            arg4=np.float32(data_ratio),
+            arg5=np.float32(dim))
 
 if __name__ == "__main__":
     import logging

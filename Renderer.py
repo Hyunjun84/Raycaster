@@ -1,3 +1,4 @@
+import glm
 import numpy as np
 from OpenGL.GL  import *
 
@@ -91,16 +92,15 @@ class GLProgram :
     def __init__(self, vtx_shader, frag_shader) :
         self.__create_program__(vtx_shader, frag_shader)
         self.use()
-        glUniform1i(self.uniforms['tex_position'], 0)
-        glUniform1i(self.uniforms['tex_gradient'], 1)
-        glUniform1i(self.uniforms['tex_HessianII'], 2)
-        glUniform1i(self.uniforms['tex_HessianIJ'], 3)
-        glUniform1i(self.uniforms['tex_colormap'], 4)
+        default_uniform_values = {'MV':np.float32(glm.mat4()), 
+                                  'orientation':np.int32(1),
+                                  'tex_position':np.int32(0), 
+                                  'tex_gradient':np.int32(1), 
+                                  'tex_HessianII':np.int32(2),
+                                  'tex_HessianIJ':np.int32(3), 
+                                  'tex_colormap':np.int32(4)}
+        self.update_uniform(default_uniform_values)
         
-
-        self.update_uniform(np.eye(4).astype(np.float32))
-
-
     def __create_program__(self, vtx_shader, frag_shader) :
         self.prg = glCreateProgram()
         vsh = self.loadShader(vtx_shader, GL_VERTEX_SHADER)
@@ -117,13 +117,13 @@ class GLProgram :
         glDeleteShader(vsh)
         glDeleteShader(fsh)
 
-        self.uniforms = {"MV" : glGetUniformLocation(self.prg, 'MV'),
-                         "tex_position" : glGetUniformLocation(self.prg, 'tex_position'),
-                         "tex_gradient" : glGetUniformLocation(self.prg, 'tex_gradient'),
-                         "tex_HessianII" : glGetUniformLocation(self.prg, 'tex_HessianII'),
-                         "tex_HessianIJ" : glGetUniformLocation(self.prg, 'tex_HessianIJ'),
-                         "tex_colormap" : glGetUniformLocation(self.prg, 'tex_colormap'),
-                         "orientation" : glGetUniformLocation(self.prg, 'orientation'),
+        self.uniforms = {"MV" : [glUniformMatrix4fv, [glGetUniformLocation(self.prg, 'MV'), 1, GL_TRUE]],
+                         "orientation" : [glUniform1i, [glGetUniformLocation(self.prg, 'orientation'),]],
+                         "tex_position" : [glUniform1i, [glGetUniformLocation(self.prg, 'tex_position')]],
+                         "tex_gradient" : [glUniform1i, [glGetUniformLocation(self.prg, 'tex_gradient')]],
+                         "tex_HessianII" : [glUniform1i, [glGetUniformLocation(self.prg, 'tex_HessianII')]],
+                         "tex_HessianIJ" : [glUniform1i, [glGetUniformLocation(self.prg, 'tex_HessianIJ')]],
+                         "tex_colormap" : [glUniform1i, [glGetUniformLocation(self.prg, 'tex_colormap')]],
                          }
         
     def loadShader(self, filename, shd_type) :
@@ -141,9 +141,11 @@ class GLProgram :
     def use(self) :
         glUseProgram(self.prg)
 
-    def setDataOrientation(self, orientation) :
-        glUniform1i(self.uniforms["orientation"], np.int32(orientation))
-    
-    def update_uniform(self, MV) :
-        glUniformMatrix4fv(self.uniforms["MV"], 1, GL_FALSE, np.float32(MV))
+    def update_uniform(self, uniforms) :
+        for k,v in uniforms.items() :
+            try :
+                u, vs = self.uniforms[k]
+                u(*vs, v)
+            except :
+                print("Uniform key error : {0}".format(k))
 

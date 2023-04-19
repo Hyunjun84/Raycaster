@@ -69,7 +69,7 @@ void main() {
 	vec4	p = texture(tex_position, vTexCoord);
 	vec3	g = texture(tex_gradient, vTexCoord).xyz;
 	float	Dxx = texture(tex_HessianII, vTexCoord).x;
-	float	tc = .01*Dxx+0.5;
+	float	tc = 100*Dxx+0.5;
 	if(p.w!=0.0)
 	{
 #if	SHADING_BLINN_PHONG

@@ -1,6 +1,6 @@
 #version 330 core
 
-#define	SHADING_BLINN_PHONG	0
+#define	SHADING_BLINN_PHONG	1
 
 in vec2 vTexCoord;
 
@@ -13,6 +13,7 @@ uniform sampler2D tex_gradient;
 uniform sampler2D tex_HessianII;
 uniform sampler2D tex_HessianIJ;
 uniform sampler2D tex_colormap;
+uniform int orientation;
 
 #if	SHADING_BLINN_PHONG
 struct TMaterial
@@ -32,11 +33,12 @@ struct TLight
 };
 
 TLight uLight = TLight(
-        vec4(-40,40,-40,0),
+        vec4(-10,10,10,0),
         vec3(.8,.8,.8),
         vec3(1,1,1),
         vec3(1,1,1)
         );
+
 
 vec4 shade_Blinn_Phong(vec3 n, vec4 pos_eye, TMaterial material, TLight light)
 {
@@ -59,22 +61,20 @@ vec4 shade_Blinn_Phong(vec3 n, vec4 pos_eye, TMaterial material, TLight light)
 	return vec4(ambient + diffuse + specular, 1);
 }
 
-
-
 #endif
 
 void main() {
 	vec4	p = texture(tex_position, vTexCoord);
-	vec3	g = texture(tex_gradient, vTexCoord).xyz;
+	vec3	g = -texture(tex_gradient, vTexCoord).xyz;
 	vec3	dii = texture(tex_HessianII, vTexCoord).xyz;
 	vec3	dij = texture(tex_HessianIJ, vTexCoord).xyz;
 
 	mat3	H = mat3(dii.x, dij.z, dij.y,
 			 dij.z, dii.y, dij.x,
-                         dij.y, dij.x, dii.z);
+                         dij.y, dij.x, dii.z)*orientation;
 
 	float	one_over_len_g = 1.0/length(g);
-	vec3	n = -g*one_over_len_g;
+	vec3	n = g*one_over_len_g;
 	mat3    P = mat3(1.0) - mat3(n.x*n.x, n.x*n.y, n.x*n.z,
 				     n.x*n.y, n.y*n.y, n.y*n.z,
                                      n.x*n.z, n.y*n.z, n.z*n.z);
@@ -85,7 +85,7 @@ void main() {
 	float   k_max = (T + sqrt(2.0*F*F - T*T))*0.5;
 	float   k_min = (T - sqrt(2.0*F*F - T*T))*0.5;
 
-	float	scale_k = 0.005;
+	float	scale_k = 10;
 	vec2	tc = vec2(scale_k*vec2(k_max,k_min)+0.5);
 
 	if(p.w!=0.0)
@@ -93,13 +93,13 @@ void main() {
 #if	SHADING_BLINN_PHONG
 		TMaterial	material = 
 			TMaterial(
-				vec3(.1,.1,.1),
+				vec3(.2,.2,.2),
 				texture(tex_colormap, tc).xyz,
 				vec3(1,1,1),
 				vec3(0,0,0),
 				128.0*0.5
 				);
-		fColor = shade_Blinn_Phong(normalize(mat3(MV)*(-p.w*g)), MV*vec4(p.xyz,1), material, uLight);
+		fColor = shade_Blinn_Phong(normalize(mat3(MV)*(p.w*g)), MV*vec4(p.xyz,1), material, uLight);
 #else
 		fColor = texture(tex_colormap, tc);
 #endif

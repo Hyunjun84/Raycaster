@@ -1,6 +1,7 @@
 import functools as ft
 import glfw
-import glm
+#import glm
+import Matrix as mat
 import logging
 import numpy as np
 from OpenGL.GL import *
@@ -28,7 +29,6 @@ class AppController :
         self.current_prog = 0
         self.gl_prog = self.gl_progs[self.current_prog][1]
         self.gl_prog.use()
-
             
         gl_texture = self.renderer.gen_deffered_textures(self.setting["RAY_DOMAIN"])
         self.renderer.gen_colormap()
@@ -55,18 +55,16 @@ class AppController :
         
         # load volume data
         self.volume_datas = []
-        for data_name, (FILE_PATH, dim, typ, ort, iso) in self.setting["VOLUME_DATA"].items() :
+        for data_name, (FILE_PATH, dim, scl, typ, ort, iso) in self.setting["VOLUME_DATA"].items() :
             volume_data = VolumeData.VolumeData(self.ctx, self.devices, self.queue)
-            volume_data.uploadVolumeData(FILE_PATH, dim, typ, ort)
+            volume_data.uploadVolumeData(FILE_PATH, dim, typ, ort, scl)
             volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
             self.volume_datas.append(((data_name, dim, iso), volume_data))
 
         self.current_data = 0
         self.volume_data = self.volume_datas[self.current_data][1]
-        self.gl_prog.setDataOrientation(self.volume_data.orientation)
-        self.isovalue = self.volume_datas[self.current_data][0][2]        
+        self.isovalue = self.volume_datas[self.current_data][0][2]
         self.withQI = False
-
         # window setting
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.callback_resize(self.wnd, w, h)
@@ -76,15 +74,16 @@ class AppController :
         d2r = lambda th : th/180*np.pi
 
         # set default Model matrix
-        Model = glm.mat4()
-
+        Model = np.eye(4, dtype=np.float32)
+        
         # set View matrix
-        View = glm.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
+        View = mat.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
 
         # set Projection matrix
-        Projection = glm.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
+        Projection = mat.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
         
         self.__update_MVP(Model, View, Projection) 
+
 
     def __init_cl__(self) :        
         self.platforms = cl.get_platforms()
@@ -134,14 +133,17 @@ class AppController :
         evt1 = self.raycaster.genRay(self.invMVP, self.volume_data.data_ratio)
         evt2 = self.raycaster.raycast(self.isovalue, 
                                       self.deffered_buffer[0], 
-                                      vol_data)
+                                      vol_data,
+                                      self.volume_data.data_ratio)
         evt3 = self.raycaster.evalGradient(self.deffered_buffer[1], 
                                            self.deffered_buffer[0], 
-                                           vol_data)
+                                           vol_data,
+                                           self.volume_data.data_ratio)
         evt4 = self.raycaster.evalHessian(self.deffered_buffer[2], 
                                           self.deffered_buffer[3], 
                                           self.deffered_buffer[0], 
-                                          vol_data)
+                                          vol_data,
+                                          self.volume_data.data_ratio)
         cl.enqueue_release_gl_objects(self.queue, self.deffered_buffer)
         self.queue.finish()
         return (evt1, evt2, evt3, evt4)
@@ -196,11 +198,10 @@ class AppController :
         self.Model = M
         self.View = V
         self.Projection = P
-        self.MV = V*M
-        self.MVP = P*V*M
-        self.invMV = glm.inverse(self.MV)
-        self.invMVP = glm.inverse(self.MVP)
-        self.gl_prog.update_uniform(self.MV)
+        self.MV = np.dot(V,M)
+        self.MVP = np.dot(P,self.MV)
+        self.invMVP = np.linalg.inv(self.MVP)
+        self.gl_prog.update_uniform({"MV":self.MV})
 
     def callback_keyboard(self, window, key, scancode, action, mods) :
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS :
@@ -238,6 +239,7 @@ class AppController :
                     self.gl_prog = self.gl_progs[self.current_prog][1]
                     self.gl_prog.use()
                     self.__update_MVP(self.Model, self.View, self.Projection)
+                    self.gl_prog.update_uniform({"orientation":np.int32(self.volume_data.orientation)})
                     Log.info("Current Shader : {0}".format(self.gl_progs[self.current_prog][0]))
 
                 # Select volume data
@@ -249,8 +251,8 @@ class AppController :
                     self.volume_data.applyQuasiInterpolator(self.raycasters[self.current_kernel][0][1])
 
                     self.isovalue = self.volume_datas[self.current_data][0][2]
-                    self.gl_prog.setDataOrientation(self.volume_data.orientation)
-                    Log.info("Current Volume Data : {0}".format(self.volume_datas[self.current_data][0][0]))
+                    self.gl_prog.update_uniform({"orientation":np.int32(self.volume_data.orientation)})
+                    Log.info("Current Volume Data : {0}/{1}".format(self.volume_datas[self.current_data][0][0],self.volume_data.orientation))
 
                     
     def __to_arcball_coordinate(self, pos) :
@@ -263,9 +265,9 @@ class AppController :
         th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
         
         if np.any(np.isnan(axis)) or np.isnan(th) :
-            M = glm.mat4()
+            M = np.eye(4)
         else : 
-            M = glm.rotate(glm.mat4(), th, tuple(axis))
+            M = mat.rotate(tuple(axis), th)
         
         return M
         
@@ -284,19 +286,18 @@ class AppController :
             if check_key([glfw.KEY_RIGHT_SHIFT, glfw.KEY_LEFT_SHIFT]) : # Translate
                 t = [current_pos[0]-self.__last_cursor_pos[0],
                     -current_pos[1]+self.__last_cursor_pos[1]]
-                M = glm.translate(glm.mat4(),[t[0]/100,t[1]/100,0])
+                M = mat.translate([t[0]/100,t[1]/100,0])
 
             elif check_key([glfw.KEY_RIGHT_CONTROL, glfw.KEY_LEFT_CONTROL]) : # Scale
                 s = self.__last_cursor_pos[1]/current_pos[1]
-                M = glm.scale(glm.mat4(),[s,s,s])
+                M = mat.scale([s,s,s])
 
             else : # Rotation
                 current_arcball_pos = self.__to_arcball_coordinate(current_pos)
                 M = self.__rotate_arcball(self.__last_arcball_pos, current_arcball_pos)
        
-            self.__update_MVP(M*self.__last_Model, self.View, self.Projection)
+            self.__update_MVP(np.dot(M,self.__last_Model), self.View, self.Projection)
 
-        
     def callback_scroll(self, window, xoffset, yoffset) :
         old_fov = self.fov
         self.fov += yoffset
@@ -309,14 +310,13 @@ class AppController :
             return
 
         d2r = lambda th : th/180*np.pi
-
         # set View matrix
         if self.fov == 0 :
-            View = glm.lookAt((0,0,2), (0,0,0), (0,1,0))
-            Projection = glm.ortho(-1, 1, -1, 1, -1, 1)
+            View = mat.lookAt((0,0,2), (0,0,0), (0,1,0))
+            Projection = mat.ortho(-1, 1, -1, 1, -1, 1)
         else :
-            View = glm.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
-            Projection = glm.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
+            View = mat.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
+            Projection = mat.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
 
         self.__update_MVP(self.Model, View, Projection)
 
@@ -332,23 +332,25 @@ if __name__ == "__main__":
     hStreamLog.setFormatter(formatter)
     Log.addHandler(hFileLog)
     Log.addHandler(hStreamLog)
-
+    
     setting = {
         "WIN_WIDTH" : 512,
         "WIN_HEIGHT" : 512,
         "RAY_DOMAIN" : (512, 512),
-        "VOLUME_DATA" : {"ML_40": ["./data/ML_40_O.raw", (40, 40, 40, 1), np.float32, 1, 0.5],
-                         "ML_80": ["./data/ML_80_O.raw", (80, 80, 80, 1), np.float32, 1, 0.5],
-                         "Dragon": ["./data/Dragon_256_O.raw", (256,256,128, 1), np.float32, -1, 0]
+        "VOLUME_DATA" : {"ML_40": ["./data/ML_40_O.raw", (40, 40, 40, 1), (1,1,1,1), np.float32, 1, 0.5],
+                         "ML_80": ["./data/ML_80_O.raw", (80, 80, 80, 1), (1,1,1,1), np.float32, 1, 0.5],
+                         "Dragon": ["./data/Dragon_256_O.raw", (256,256,128, 1), (1,1,1,1), np.float32, -1, 0],
+                         'Carp'  : ["./data/Carp.raw", (256,256,512), (0.78125,0.390625,1,1), '>i2', 1, 1200],
                          },
         "SHADER" : {"Blinn-Phong" : ["./shader/default.vsh", "./shader/Blinn_Phong.fsh"],
                     "Min/Max-Curvature" : ["./shader/default.vsh", "./shader/MinMaxCurvature.fsh"],
-                    "Dxx" : ["./shader/default.vsh", "./shader/Dxx.fsh"],
-                    "Dyy" : ["./shader/default.vsh", "./shader/Dyy.fsh"],
-                    "Dzz" : ["./shader/default.vsh", "./shader/Dzz.fsh"],
-                    "Dyz" : ["./shader/default.vsh", "./shader/Dyz.fsh"],
-                    "Dzx" : ["./shader/default.vsh", "./shader/Dzx.fsh"],
-                    "Dxy" : ["./shader/default.vsh", "./shader/Dxy.fsh"]},
+                    #"Dxx" : ["./shader/default.vsh", "./shader/Dxx.fsh"],
+                    #"Dyy" : ["./shader/default.vsh", "./shader/Dyy.fsh"],
+                    #"Dzz" : ["./shader/default.vsh", "./shader/Dzz.fsh"],
+                    #"Dyz" : ["./shader/default.vsh", "./shader/Dyz.fsh"],
+                    #"Dzx" : ["./shader/default.vsh", "./shader/Dzx.fsh"],
+                    #"Dxy" : ["./shader/default.vsh", "./shader/Dxy.fsh"]
+                    },
         "SPLINE_KERNEL" : {"Six Direction Box-Spline on CC" : ["./kernel/cc6.cl",    (2.0, -1/6, 0.0, 0.0)], 
                            "Second Order FCC Voronoi-Spline": ["./kernel/fcc_v2.cl", (1.0, 0.0, 0.0, 0.0)], 
                            "Third Order FCC Voronoi-Spline" : ["./kernel/fcc_v3.cl", (3/2, 0.0, -1/24, 0.0)]},

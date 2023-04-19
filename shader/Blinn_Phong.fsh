@@ -72,7 +72,7 @@ TMaterial uMaterial[2] =
 	);
 
 TLight uLight = TLight(
-        vec4(-40,40,40,0),
+        vec4(-10,10,10,0),
         vec3(.8,.8,.8),
         vec3(1,1,1),
         vec3(1,1,1)
