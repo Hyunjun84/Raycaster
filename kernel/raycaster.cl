@@ -73,7 +73,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     float orientation = 2.f*convert_float(voxel < level)-1.f;     // equivalent to (voxel<level?1:-1)
     float3 dir = normalize(e-p)*ray_step;
 
-    int max_iter = min(100000, convert_int(max_ray_len/ray_step)+1);//convert_int(ray.w*fdim.z/dir.z));
+    int max_iter = min(100000, convert_int(max_ray_len/ray_step));//convert_int(ray.w*fdim.z/dir.z));
     float4 val = (float4)(0);
 
     int i=0;
