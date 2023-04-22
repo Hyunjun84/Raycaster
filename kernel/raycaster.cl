@@ -85,8 +85,8 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
             // One step of Regula Falsi
             if(fabs(voxel-voxel_prev) > 1E-4) 
                 p = (p*(voxel_prev-level) - p_prev*(voxel-level))/(voxel_prev-voxel);
-            // store normalized coordinates( [0...1]^3*scale)
-            val = (float4)( ((p+0.5f)/dim.xyz)*scale.xyz, orientation);
+            // store normalized coordinates( [-1...1]^3*scale)
+            val = (float4)( (((p+0.5f)/dim.xyz)-0.5f)*2*scale.xyz, orientation);
             break;
         }
         voxel_prev=voxel;
@@ -102,12 +102,13 @@ __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image2d_
     float4 p = read_imagef(Position, sp, id);
     
     // convert texture coordinates( [-0.5...(dim-0.5)]
-    p.xyz = (p.xyz/scale.xyz)*dim.xyz-0.5f;
+    p.xyz = ((p.xyz/scale.xyz*0.5f)+0.5f)*dim.xyz-0.5f;
 
     float3 grad = (float3)(0);
     if(p.w!=0)  grad = eval_g(p.xyz, vol);
     
-    write_imagef(Gradient, id, (float4)((grad/dim.xyz)*scale.xyz,1));
+    float4 s = max(dim.x, max(dim.y, dim.z))*scale;
+    write_imagef(Gradient, id, (float4)(grad*s.xyz, 1));
 }
 
 
@@ -116,7 +117,7 @@ __kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only im
     int2 id = (int2)(get_global_id(0), get_global_id(1));
     float4 p = read_imagef(Position, sp, id);
     // convert texture coordinates( [-0.5...(dim-0.5)]
-    p.xyz = (p.xyz/scale.xyz)*dim.xyz-0.5f;
+    p.xyz = ((p.xyz/scale.xyz*0.5f)+0.5f)*dim.xyz-0.5f;
 
     float3 grad = (float3)(0);
     if(p.w!=0){
@@ -129,8 +130,9 @@ __kernel void evalFiniteGradient(__write_only image2d_t Gradient, __read_only im
         float d112 = eval(p.xyz+(float3)(0, 0, delta), vol);
         grad = (float3)(d211-d011, d121-d101, d112-d110)/(2*delta);
     }
-
-    write_imagef(Gradient, id, (float4)(grad/dim.xyz*scale.xyz,1));
+    
+    float4 s = max(dim.x, max(dim.y, dim.z))*scale;
+    write_imagef(Gradient, id, (float4)(grad*s.xyz, 1));
 }
 
 __kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_t Hessian2, __read_only image2d_t Position, __read_only image3d_t vol, float4 scale, float4 dim)
@@ -138,16 +140,15 @@ __kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_
     int2 id = (int2)(get_global_id(0), get_global_id(1));
     float4 p = read_imagef(Position, sp, id);
     // convert texture coordinates( [-0.5...(dim-0.5)]
-    p.xyz = (p.xyz/scale.xyz)*dim.xyz-0.5f;
+    p.xyz = ((p.xyz/scale.xyz*0.5f)+0.5f)*dim.xyz-0.5f;
 
 
     float8 H = (float8)(0);
     if(p.w!=0) H = eval_H(p.xyz, vol);
 
-    float4 inv_scale = 1.f/(dim)*scale;
-
-    write_imagef(Hessian1, id, H.lo*inv_scale*inv_scale);
-    write_imagef(Hessian2, id, H.hi*inv_scale.yzxw*inv_scale.zxyw);
+    float4 s = max(dim.x, max(dim.y, dim.z))*scale;
+    write_imagef(Hessian1, id, H.lo*s*s);
+    write_imagef(Hessian2, id, H.hi*s.yzxw*s.zxyw);
 }
 
 __kernel void evalFiniteHessian(__write_only image2d_t Hessian1, __write_only image2d_t Hessian2, __read_only image2d_t Position, __read_only image3d_t vol, float4 scale, float4 dim)
@@ -194,6 +195,7 @@ __kernel void evalFiniteHessian(__write_only image2d_t Hessian1, __write_only im
                                  (f221 - f201 - f021 + f001))*_1_over_delta_square;
     }
 
-    write_imagef(Hessian1, id, H.lo/dim*scale*scale);
-    write_imagef(Hessian2, id, H.hi/dim*scale.yzxw*scale.zxyw);
+    float4 s = max(dim.x, max(dim.y, dim.z))*scale;
+    write_imagef(Hessian1, id, H.lo*s*s);
+    write_imagef(Hessian2, id, H.hi*s.yzxw*s.zxyw);
 }

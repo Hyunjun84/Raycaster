@@ -175,7 +175,7 @@ class AppController :
 
     def mainloop(self) :
         frame_count = 0
-        lastTime = 0
+        last_time = 0
         #evt = []
         while not glfw.window_should_close(self.wnd):
             #evt.append(self.update())
@@ -187,7 +187,7 @@ class AppController :
 
             frame_count  = frame_count+1
             current_time = glfw.get_time()
-            delta_time   = current_time - lastTime
+            delta_time   = current_time - last_time
 
             if(delta_time >= 2.0) :
                 fps = frame_count/delta_time
@@ -206,7 +206,7 @@ class AppController :
 
                 glfw.set_window_title(self.wnd, "Renderer({0:.2f} fps)".format(fps))
                 frame_count = 0
-                lastTime   = current_time
+                last_time   = current_time
                 #evt = []
 
         glfw.terminate()
@@ -266,11 +266,8 @@ class AppController :
                     self.shader.use()
                     self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
 
-                    if self.use_global_transform :
-                        m = self.model
-                    else :
-                        m = self.volume_data.model
-
+                    m = self.model if self.use_global_transform else self.volume_data.model
+                    
                     self.updateMVP(m, self.view, self.projection)
                     Log.info("Current Volume Data : {0}/{1}".format(self.volume_data.title, self.volume_data.orientation))
 
@@ -287,7 +284,7 @@ class AppController :
 
     def __toArcballCoordinates__(self, pos) :
         pos = ((pos[0]-256)/256, (256-pos[1])/256)
-        return (pos[0], pos[1], (2**2-(pos[0]**2 + pos[1]**2))**0.5);
+        return (pos[0], pos[1], (4-(pos[0]**2 + pos[1]**2))**0.5);
 
     def __rotateArcball__(self, last_pos, cur_pos) :
         axis = np.cross(last_pos, cur_pos)

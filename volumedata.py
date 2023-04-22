@@ -35,6 +35,7 @@ class VolumeData :
         self.Log.info("\tresolution : ({0}, {1}, {2})".format(*dim))
         self.Log.info("\trange : {0:.4f} - {1:.4f}".format(np.min(self.h_data), np.max(self.h_data)))
         self.Log.info("\tscale : ({0}, {1}, {2})".format(*scale))
+        self.Log.info("\tratio : ({0}, {1}, {2})".format(*self.data_ratio))
         self.Log.info("\tnormalized domain : ({0}, {1}, {2})".format(*self.data_ratio))
 
         if not self.d_data == None : self.d_data.release()

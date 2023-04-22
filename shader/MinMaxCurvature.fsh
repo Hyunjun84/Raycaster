@@ -85,7 +85,7 @@ void main() {
 	float   k_max = (T + sqrt(2.0*F*F - T*T))*0.5;
 	float   k_min = (T - sqrt(2.0*F*F - T*T))*0.5;
 
-	float	scale_k = 10;
+	float	scale_k = 0.005;
 	vec2	tc = vec2(scale_k*vec2(k_max,k_min)+0.5);
 
 	if(p.w!=0.0)
