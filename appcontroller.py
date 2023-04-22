@@ -104,6 +104,7 @@ class AppController :
             v = mat.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
             p = mat.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
 
+        self.use_global_transform = eval(config["use global transform"])
         self.updateMVP(m, v, p)
 
     def __initCL__(self) :
@@ -219,7 +220,7 @@ class AppController :
         self.view = v
         self.projection = p
         self.mv = np.dot(v, m)
-        self.mvp = np.dot(p,self.mv)
+        self.mvp = np.dot(p, self.mv)
         self.inv_mvp = np.linalg.inv(self.mvp)
         self.shader.setUniform({"MV":self.mv})
 
@@ -252,15 +253,25 @@ class AppController :
                 case glfw.KEY_S :
                     self.shader = next(self.pool_shader)
                     self.shader.use()
+                    self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
+                    self.updateMVP(self.model, self.view, self.projection)
                     Log.info("Current Shader : {0}".format(self.shader.title))
 
                 # Select volume data
                 case glfw.KEY_V :
+                    self.volume_data.model = self.model
                     self.volume_data = next(self.pool_dataset)
                     self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
                     self.isovalue = self.volume_data.isovalue
+                    self.shader.use()
                     self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
-                    self.updateMVP(self.volume_data.model, self.view, self.projection)
+
+                    if self.use_global_transform :
+                        m = self.model
+                    else :
+                        m = self.volume_data.model
+
+                    self.updateMVP(m, self.view, self.projection)
                     Log.info("Current Volume Data : {0}/{1}".format(self.volume_data.title, self.volume_data.orientation))
 
                 case glfw.KEY_I :
