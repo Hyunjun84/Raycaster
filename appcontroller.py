@@ -41,6 +41,7 @@ class AppController :
 
         # make deffered buffer
         gl_texture = self.renderer.genDefferedTextures(eval(config["ray domain"]))
+        self.renderer.genColormap()
 
         # get deffered buffer handle
         self.deffered_buffer = [cl.GLTexture(self.ctx, cl.mem_flags.READ_WRITE, GL_TEXTURE_2D, 0, tex_id, 2)

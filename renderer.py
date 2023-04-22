@@ -6,8 +6,8 @@ class Renderer :
     def __init__(self, fbo_size) :
         self.__initQuad__()
         self.fbo_size = [0,0]
-        self.genDefferedTextures(fbo_size)
-        self.__genColormap__()
+#        self.genDefferedTextures(fbo_size)
+#        self.genColormap()
 
     def genDefferedTextures(self, fbo_size) :
         #if self.fbo_size == fbo_size : return self.texid
@@ -29,15 +29,15 @@ class Renderer :
 
         return self.texid
 
-    def __genColormap__(self) :
+    def genColormap(self) :
          # colormap for min-max curvature
         colormap = np.array([[ 1, 0, 0], [ 1, 1, 0], [0,1,0],
                              [.5,.5,.5], [.5,.5,.5], [0,1,1],
                              [.5,.5,.5], [.5,.5,.5], [0,0,1]], dtype=np.float32)
 
-        self.tex_colormap = glGenTextures(1)
+        tex_colormap = glGenTextures(1)
         glActiveTexture(GL_TEXTURE4)
-        glBindTexture(GL_TEXTURE_2D, self.tex_colormap)
+        glBindTexture(GL_TEXTURE_2D, tex_colormap)
         glPixelStorei(GL_UNPACK_ALIGNMENT,1)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
@@ -45,8 +45,8 @@ class Renderer :
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 3, 3, 0, GL_RGB, GL_FLOAT, colormap)
-        #glBindTexture(GL_TEXTURE_2D, self.tex_colormap)
-        return self.tex_colormap
+        
+        return tex_colormap
 
     def __initQuad__(self) :
         quad = np.array([

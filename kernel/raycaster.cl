@@ -144,7 +144,7 @@ __kernel void evalHessian(__write_only image2d_t Hessian1, __write_only image2d_
     float8 H = (float8)(0);
     if(p.w!=0) H = eval_H(p.xyz, vol);
 
-    float4 inv_scale = 1.f/(dim*scale);
+    float4 inv_scale = 1.f/(dim)*scale;
 
     write_imagef(Hessian1, id, H.lo*inv_scale*inv_scale);
     write_imagef(Hessian2, id, H.hi*inv_scale.yzxw*inv_scale.zxyw);
