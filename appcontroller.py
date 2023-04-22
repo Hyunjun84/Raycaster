@@ -1,3 +1,10 @@
+"""
+raycaster.py
+
+# Copyright (c) 2023, Hyunjun Kim
+# All rights reserved.
+
+"""
 import configparser
 import functools as ft
 import glfw
@@ -291,13 +298,24 @@ class AppController :
         pos = ((pos[0]-256)/256, (256-pos[1])/256)
         return (pos[0], pos[1], (4-(pos[0]**2 + pos[1]**2))**0.5);
 
-    def __rotateArcball__(self, last_pos, cur_pos) :
-        axis = np.cross(last_pos, cur_pos)
-        if np.linalg.norm(axis) == 0 :
-            return np.eye(4, dtype=np.float32)
+    def __rotateArcball__(self, last_pos, cur_pos, is_click=False) :
+        axis_click = 0.2
+        angle_click = 15 # degree
+        delta = np.array(last_pos) - np.array(cur_pos)
+        
+        th = np.pi/2-np.arccos( np.linalg.norm(delta)/2)
+        if is_click :
+            mag = np.abs(delta)
+            if mag[0]>mag[1] :
+                axis = np.array([0, -np.sign(delta[0]), 0])
+            else :
+                axis = np.array([np.sign(delta[1]), 0, 0])
+            th = ((th/np.pi*180)//angle_click*angle_click)/180*np.pi
+        else : 
+            axis = np.cross(last_pos, cur_pos)
+        
         axis = axis / np.linalg.norm(axis)
-        th = np.pi/2-np.arccos( np.linalg.norm((np.array(cur_pos)-np.array(last_pos)))/2)
-
+    
         if np.any(np.isnan(axis)) or np.isnan(th) :
             M = np.eye(4, dtype=np.float32)
         else :
@@ -327,8 +345,9 @@ class AppController :
                 m = mat.scale([s,s,s])
 
             else : # Rotation
+                is_click = check_key([glfw.KEY_RIGHT_ALT, glfw.KEY_LEFT_ALT])
                 current_arcball_pos = self.__toArcballCoordinates__(current_pos)
-                m = self.__rotateArcball__(self.__last_arcball_pos, current_arcball_pos)
+                m = self.__rotateArcball__(self.__last_arcball_pos, current_arcball_pos, is_click)
 
             self.updateMVP(np.dot(m, self.__last_model), self.view, self.projection)
 

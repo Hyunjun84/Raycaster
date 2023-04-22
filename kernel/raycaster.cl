@@ -1,3 +1,11 @@
+/*
+raycaster.py
+
+# Copyright (c) 2023, Hyunjun Kim
+# All rights reserved.
+
+*/
+
 #ifndef M_PI
 # define M_PI 3.141592653589793115998
 #endif

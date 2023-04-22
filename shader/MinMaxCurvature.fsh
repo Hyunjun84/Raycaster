@@ -1,3 +1,10 @@
+/*
+raycaster.py
+
+# Copyright (c) 2023, Hyunjun Kim
+# All rights reserved.
+
+*/
 #version 330 core
 
 #define	SHADING_BLINN_PHONG	1

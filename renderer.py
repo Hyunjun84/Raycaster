@@ -1,3 +1,11 @@
+"""
+raycaster.py
+
+# Copyright (c) 2023, Hyunjun Kim
+# All rights reserved.
+
+"""
+
 import glm
 import numpy as np
 from OpenGL.GL  import *

@@ -1,3 +1,11 @@
+"""
+raycaster.py
+
+# Copyright (c) 2023, Hyunjun Kim
+# All rights reserved.
+
+"""
+
 import numpy as np
 import pyopencl as cl
 import logging
