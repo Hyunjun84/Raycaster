@@ -7,7 +7,7 @@ import numpy as np
 from OpenGL.GL import *
 import pyopencl as cl
 from pyopencl.tools import get_gl_sharing_context_properties
-
+from PIL import Image
 import helper_matrix as mat
 import raycaster
 import renderer
@@ -248,6 +248,11 @@ class AppController :
                 # Use quasi interpolator
                 case glfw.KEY_Q :
                     self.withQI = not self.withQI
+
+                case glfw.KEY_X :
+                    buf = self.renderer.getFrameBufferData()
+                    img = Image.frombytes('RGBA', (512, 512), buf).transpose(Image.FLIP_TOP_BOTTOM)
+                    img.save("screenshot/{0}_{1}.png".format(self.volume_data.title, self.raycaster.title))
 
                 # Select shader
                 case glfw.KEY_S :
