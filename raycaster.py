@@ -9,12 +9,15 @@ raycaster.py
 import numpy as np
 import pyopencl as cl
 import logging
+from lattice import Lattice
+
 
 class Raycaster :
-    def __init__(self, ctx, devices, queue, title, kernel_src, resolution, qi_coefficients) :
+    def __init__(self, ctx, devices, queue, title, kernel_src, resolution, sampling_lattice, qi_coefficients) :
         self.ctx = ctx
         self.queue = queue
         self.title = title
+        self.lattice = sampling_lattice
         self.qi_coeff = qi_coefficients
         self.Log = logging.getLogger("Raycaster")
 

@@ -13,24 +13,35 @@
 #define c6 c[6]
 #define c7 c[7]
 
-
 __inline void fetch_coefficients(float* c, image3d_t vol, int3 org, int3 R, uint4 P)
 {
     int3 dirx = R*shuffle((int4)(1,0,0,0), P).xyz;
     int3 diry = R*shuffle((int4)(0,1,0,0), P).xyz;
     int3 dirz = R*shuffle((int4)(0,0,1,0), P).xyz;
 
-    c[0] = read_imagef(vol, sp, (int4)(org,1)).r;
-    c[1] = read_imagef(vol, sp, (int4)(org+2*dirx,1)).r;
+    int3 p = org;
+    int offset = ((p.x&0x01)<<1)+(p.y&0x01);
+    c[0] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
+    p = (org+2*dirx);
+    c[1] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
 
-    c[2] = read_imagef(vol, sp, (int4)(org+diry-dirz,1)).r;
-    c[3] = read_imagef(vol, sp, (int4)(org+diry+dirz,1)).r;
+    p = org+diry-dirz;
+    offset = ((p.x&0x01)<<1)+(p.y&0x01);
+    c[2] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
+    p = org+diry+dirz;
+    c[3] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
 
-    c[4] = read_imagef(vol, sp, (int4)(org+dirx-dirz,1)).r;
-    c[5] = read_imagef(vol, sp, (int4)(org+dirx+dirz,1)).r;
+    p = org+dirx-dirz;
+    offset = ((p.x&0x01)<<1)+(p.y&0x01);
+    c[4] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
+    p = org+dirx+dirz;
+    c[5] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
 
-    c[6] = read_imagef(vol, sp, (int4)(org+dirx-diry,1)).r;
-    c[7] = read_imagef(vol, sp, (int4)(org+dirx+diry,1)).r;
+    p = org+dirx-diry;
+    offset = ((p.x&0x01)<<1)+(p.y&0x01);
+    c[6] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
+    p = org+dirx+diry;
+    c[7] = read_imagef(vol, sp, (int4)(p.x>>1, p.y>>1, p.z>>1, 1))[offset];
 }
 
 __inline float eval(float3 p_in, __read_only image3d_t vol)

@@ -19,12 +19,13 @@ import helper_matrix as mat
 import raycaster
 import renderer
 import volumedata
+from lattice import Lattice
 
 class AppController :
-    def __init__(self) :
+    def __init__(self, config_file="config.ini") :
         config = configparser.ConfigParser()
         #config.optionxform = str
-        config.read("config.ini")
+        config.read(config_file)
         config = config["DEFAULT"]
 
         self.__initWindow__(eval(config["window size"]))
@@ -69,6 +70,7 @@ class AppController :
                                             kernel_name,
                                             raycaster_src,
                                             eval(config["ray domain"]),
+                                            eval(kernel_config[kernel_name]['sampling lattice']),
                                             eval(kernel_config[kernel_name]['quasi coefficients']))
                     self.pool_raycaster.append(r)
         self.pool_raycaster = it.cycle(self.pool_raycaster)
@@ -81,11 +83,13 @@ class AppController :
         for s in dataset_config.sections() :
             volume_data = volumedata.VolumeData(self.ctx, self.devices, self.queue)
             volume_data.uploadVolumeDataWithConfig(dataset_config[s])
-            volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
+        
+
             self.pool_dataset.append(volume_data)
 
         self.pool_dataset = it.cycle(self.pool_dataset)
         self.volume_data = next(self.pool_dataset)
+        self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
         self.isovalue = self.volume_data.isovalue
 
         self.withQI = False
@@ -94,13 +98,10 @@ class AppController :
         w,h = glfw.get_framebuffer_size(self.wnd)
         self.__callbackResize(self.wnd, w, h)
 
-        self.fov = int(config["FOV"])
-        if self.fov<0 : self.fov = 0
-        if self.fov>90 : self.fov = 90
+        self.fov = np.clip(float(config["FOV"]), 0, 90)
 
         # set default Model matrix
-        m = np.eye(4, dtype=np.float32)
-
+        m = self.volume_data.model
 
         # set View and Projection matrix
         if self.fov == 0 :
@@ -108,11 +109,14 @@ class AppController :
             p = mat.ortho(-1, 1, -1, 1, -1, 1)
         else :
             d2r = lambda th : th/180*np.pi
-            v = mat.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
-            p = mat.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
+            cotan_th = 1/np.tan(d2r(self.fov/2))
+            v = mat.lookAt((0,0,cotan_th), (0,0,0), (0,1,0))
+            p = mat.perspective(d2r(self.fov), 1, cotan_th, 2+cotan_th)
 
         self.use_global_transform = eval(config["use global transform"])
         self.updateMVP(m, v, p)
+        self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
+
 
     def __initCL__(self) :
         self.platforms = cl.get_platforms()
@@ -121,7 +125,7 @@ class AppController :
         ctx_properties = ctx_properties + get_gl_sharing_context_properties()
         self.ctx = cl.Context(dev_type=cl.device_type.GPU,
                               properties=ctx_properties)
-        self.queue = cl.CommandQueue(context=self.ctx,
+        self.queue = cl.CommandQueue(context=self.ctx, device=self.devices[0], 
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     def __initWindow__(self, window_size) :
@@ -249,13 +253,20 @@ class AppController :
                 # Select kernel
                 case glfw.KEY_K :
                     self.raycaster = next(self.pool_raycaster)
-                    self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
+                    while self.volume_data.lattice != self.raycaster.lattice :
+                        self.raycaster = next(self.pool_raycaster)
+                    evt = self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
+                    #self.queue.finish()
+                    #msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+                    #Log.info("Apply Quasi prefilter : {0} msec.".format(msec(evt), "msec"))
                     Log.info("Current Kernel : {0}".format(self.raycaster.title))
+                    Log.info("Current Volume Data : {0}/{1}".format(self.volume_data.title, self.volume_data.orientation))
 
                 # Use quasi interpolator
                 case glfw.KEY_Q :
                     self.withQI = not self.withQI
 
+                # Save screenshot
                 case glfw.KEY_X :
                     buf = self.renderer.getFrameBufferData()
                     img = Image.frombytes('RGBA', (512, 512), buf).transpose(Image.FLIP_TOP_BOTTOM)
@@ -268,13 +279,21 @@ class AppController :
                     self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
                     self.updateMVP(self.model, self.view, self.projection)
                     Log.info("Current Shader : {0}".format(self.shader.title))
-
+                    
                 # Select volume data
                 case glfw.KEY_V :
                     self.volume_data.model = self.model
                     self.volume_data = next(self.pool_dataset)
-                    self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
                     self.isovalue = self.volume_data.isovalue
+                    
+                    current_raycaster = self.raycaster.title
+                    while self.raycaster.lattice != self.volume_data.lattice :
+                        self.raycaster = next(self.pool_raycaster)
+                        if self.raycaster.title == current_raycaster.title : 
+                            exit(1)
+
+                    self.volume_data.applyQuasiInterpolator(self.raycaster.qi_coeff)
+
                     self.shader.use()
                     self.shader.setUniform({"orientation":np.int32(self.volume_data.orientation)})
 
@@ -282,10 +301,12 @@ class AppController :
                     
                     self.updateMVP(m, self.view, self.projection)
                     Log.info("Current Volume Data : {0}/{1}".format(self.volume_data.title, self.volume_data.orientation))
+                    Log.info("Current Kernel : {0}".format(self.raycaster.title))
 
+                # Print current status
                 case glfw.KEY_I :
                     Log.info("====================================================")
-                    Log.info("States")
+                    Log.info("Status")
                     Log.info("\tKernel : {0}{1}".format(self.raycaster.title, " with Quasi Interpolation" if self.withQI==1 else ""))
                     Log.info("\tDataset : {0}".format(self.volume_data.title))
                     Log.info("\tShader : {0}".format(self.shader.title))
@@ -314,6 +335,8 @@ class AppController :
         else : 
             axis = np.cross(last_pos, cur_pos)
         
+        if np.linalg.norm(axis) == 0 : return np.eye(4, dtype=np.float32)
+
         axis = axis / np.linalg.norm(axis)
     
         if np.any(np.isnan(axis)) or np.isnan(th) :
@@ -353,9 +376,7 @@ class AppController :
 
     def __callbackScroll(self, window, xoffset, yoffset) :
         old_fov = self.fov
-        self.fov += yoffset
-        if self.fov<0 : self.fov = 0
-        if self.fov>90 : self.fov = 90
+        self.fov = np.clip(self.fov+yoffset, 0, 90)
 
         if not old_fov == self.fov :
             Log.info("Current FOV : {0:.2f}".format(self.fov) if self.fov>0 else "Orthogonal Porjection")
@@ -363,13 +384,14 @@ class AppController :
             return
 
         if self.fov == 0 :
-            v = mat.lookAt((0,0,2), (0,0,0), (0,1,0))
+            v = mat.lookAt((0,0,10), (0,0,0), (0,1,0))
             p = mat.ortho(-1, 1, -1, 1, -1, 1)
         else :
             d2r = lambda th : th/180*np.pi
-            v = mat.lookAt((0,0,1+1/np.tan(d2r(self.fov/2))), (0,0,0), (0,1,0))
-            p = mat.perspective(d2r(self.fov), 1, 1/np.tan(d2r(self.fov/2)), 2+1/np.tan(d2r(self.fov/2)))
-
+            cotan_th = 1/np.tan(d2r(self.fov/2))
+            v = mat.lookAt((0,0,cotan_th), (0,0,0), (0,1,0))
+            p = mat.perspective(d2r(self.fov), 1, cotan_th, 2+cotan_th)
+     
         self.updateMVP(self.model, v, p)
 
 
@@ -385,7 +407,7 @@ if __name__ == "__main__":
     Log.addHandler(hFileLog)
     Log.addHandler(hStreamLog)
 
-    ctrl = AppController()
+    ctrl = AppController("config.ini")
     ctrl.mainloop()
 
     exit()
