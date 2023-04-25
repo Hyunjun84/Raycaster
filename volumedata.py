@@ -8,10 +8,13 @@ raycaster.py
 
 import logging
 import numpy as np
+from pyopencl.tools import get_gl_sharing_context_properties
+
 import pyopencl as cl
 from enum import Enum
 
 from lattice import Lattice
+
 
 class VolumeData :
     def __init__(self, ctx, devices, queue) :
@@ -99,16 +102,17 @@ class VolumeData :
         sz_local = tuple(sz_local)
 
         if self.lattice == Lattice.CC : 
-            evt = self.prg.applyQuasiInterpolator_CC(queue=self.queue,
+            #evt = self.prg.applyQuasiInterpolator_CC(queue=self.queue,
+            evt = self.prg.applyQuasiInterpolator_CC_loc(queue=self.queue,
                                                global_size=sz_global,
                                                local_size=sz_local,
                                                arg0=self.d_data_QI,
                                                arg1=self.d_data,
                                                arg2=np.float32(coeff),
                                                arg3=np.int32(self.dim))
-            
         if self.lattice == Lattice.FCC : 
-            evt = self.prg.applyQuasiInterpolator_FCC(queue=self.queue,
+            #evt = self.prg.applyQuasiInterpolator_FCC(queue=self.queue,
+            evt = self.prg.applyQuasiInterpolator_FCC_loc(queue=self.queue,
                                                global_size=sz_global,
                                                local_size=sz_local,
                                                arg0=self.d_data_QI,
@@ -117,3 +121,48 @@ class VolumeData :
                                                arg3=np.int32(self.dim))
             
         return evt
+
+
+if __name__ == "__main__":
+    Log = logging.getLogger("Raycaster")
+    Log.setLevel(logging.DEBUG)
+    hFileLog = logging.FileHandler("./output/raycaster.log")
+    hStreamLog = logging.StreamHandler()
+    formatter = logging.Formatter(fmt='[%(levelname)s][%(asctime)s.%(msecs)03d][%(funcName)s():%(lineno)d] %(message)s',
+                                  datefmt='%H:%M:%S')
+    hFileLog.setFormatter(formatter)
+    hStreamLog.setFormatter(formatter)
+    Log.addHandler(hFileLog)
+    Log.addHandler(hStreamLog)
+
+    platforms = cl.get_platforms()
+    devices = platforms[0].get_devices(device_type=cl.device_type.GPU)
+    ctx_properties = [(cl.context_properties.PLATFORM, platforms[0])]
+    ctx = cl.Context(dev_type=cl.device_type.GPU, properties=ctx_properties)
+    queue = cl.CommandQueue(context=ctx, device=devices[0], 
+        properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    with open('./kernel/volume_data.cl', 'r') as fp : src = fp.read()
+    prg = cl.Program(ctx, src)
+    prg.build(options=["",],devices=[devices[0],], cache_dir=None)
+
+    h_data = np.random.rand(8,8,8).astype(np.float32)
+
+    mf = cl.mem_flags
+    fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
+    d_in = cl.Image(context=ctx, flags=mf.READ_WRITE|mf.COPY_HOST_PTR, format=fmt, shape=h_data.shape, hostbuf=h_data)
+    d_out = cl.Image(context=ctx, flags=mf.READ_WRITE, format=fmt, shape=h_data.shape)
+
+    h_in = np.zeros_like(h_data)
+    h_out = np.zeros_like(h_data)
+
+    cl.enqueue_copy(queue, h_in, d_in, origin=(0,0,0), region=h_data.shape)
+
+    queue.finish()
+
+    print(h_in-h_data)
+
+
+
+
+    exit()

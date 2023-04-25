@@ -73,7 +73,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     float3 e = (ray.s456/scale.xyz*0.5f+0.5f)*dim.xyz-0.5f; // [-0.5 ... dim-0.5]^3
 	float3 p_prev;
 
-	float ray_step = 0.4f;
+	float ray_step = 0.1f;
     float max_ray_len = distance(p,e);
     float voxel = eval(p, vol);
     float voxel_prev = voxel;
@@ -91,7 +91,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     	voxel = eval(p, vol);
 		if(orientation*voxel > orientation*level) {
             // One step of Regula Falsi
-            if(fabs(voxel-voxel_prev) > 1E-4) 
+            if(fabs(voxel-voxel_prev) > 1E-6) 
                 p = (p*(voxel_prev-level) - p_prev*(voxel-level))/(voxel_prev-voxel);
             // store normalized coordinates( [-1...1]^3*scale)
             val = (float4)( (((p+0.5f)/dim.xyz)-0.5f)*2*scale.xyz, orientation);

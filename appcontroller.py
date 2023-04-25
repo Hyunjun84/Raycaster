@@ -203,7 +203,7 @@ class AppController :
             if(delta_time >= 2.0) :
                 fps = frame_count/delta_time
                 Log.info("{0:.2f} FPS.".format(fps))
-                #msec = (lambda evt:(evt.profile.end-evt.profile.start)*1E-6)
+                #self.lattice, 
 
                 #evt = np.array([(msec(e1),msec(e2),msec(e3),msec(e4)) for e1, e2, e3, e4 in evt])
                 #noe = len(evt)
