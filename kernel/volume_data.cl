@@ -1,6 +1,6 @@
 #pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
-const sampler_t sp = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+const sampler_t sp = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 
 __kernel void applyQuasiInterpolator_CC(__write_only image3d_t vol, __read_only image3d_t org_vol, float4 coef, int4 dim)
 {
@@ -35,7 +35,6 @@ __kernel void applyQuasiInterpolator_CC(__write_only image3d_t vol, __read_only 
     val += read_imagef(org_vol, sp, id + (int4)(-1,-1, 0,0)).x*coef.s2;
 
     write_imagef(vol, id, val);
-
 }
 
 __inline int4 idx2id(int idx, int4 sz)
@@ -77,6 +76,7 @@ __kernel void applyQuasiInterpolator_CC_loc(__write_only image3d_t vol, __read_o
     } 
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    if(any(id.xyz>=dim.xyz)) return;
 #if 0
     lid += 1; 
     float val = buf[id2idx(lid, esiz)]*coef.s0;
@@ -396,30 +396,4 @@ __kernel void applyQuasiInterpolator_FCC_loc(__write_only image3d_t vol, __read_
     ret.s3 += buf[lidx + 13].s2*coef.s1;
 #endif
     write_imagef(vol, id, ret);
-}
-
-/*
-    gen minmax buffer
-    each level has dobluing
-        1^3 ... maximum pot lesser than max(dim/2)^3
-    mimmax buffer size is
-        sum_{n=1}^k = 8/7*(2^{3*k}-1)+1
-*/
-__kernel void genQuasiMinMaxBuffer_test(__write_only image3d_t out, __write_only image3d_t in, __local float* buf, int8 stencil)
-{
-    int3 gid = (int3)(get_global_id(0), get_global_id(1), get_global_id(2));
-    int3 lid = (int3)(get_local_id(0), get_local_id(1), get_local_id(2));
-    int3 Gid = (int3)(get_group_id(0), get_group_id(1), get_group_id(2));
-
-    int3 lsiz = (int3)(get_local_size(0), get_local_size(1), get_local_size(2));
-    int lidx = lsiz.x*(lsiz.y*lid.z + lid.y) + lid.x;
-
-
-
-
-
-
-
-
-
 }

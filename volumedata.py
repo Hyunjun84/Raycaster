@@ -74,6 +74,51 @@ class VolumeData :
 
                 self.dim = dim
 
+            case Lattice.InterleavedFCC :
+                # note that axis order of numpy array.(z,y,x)
+                self.h_data = np.reshape(self.h_data, [dim[2], dim[1], dim[0]])
+                self.volume_res = [self.dim[0], self.dim[1], self.dim[2]//2]
+
+                # fcc offset : 000, 011, 101, 110
+                # note that axis order of numpy array.(z,y,x) 
+                offset = [[0,0,0], [1,1,0], [1,0,1], [0,1,1]]
+                h_fcc = [np.array(self.h_data[o[0]::2, o[1]::2, o[2]::2]) for o in offset]
+                self.h_data = np.zeros([self.volume_res[2], self.volume_res[1], self.volume_res[0]], dtype=np.float32)
+                self.h_data[::, ::2, ::2] = h_fcc[0]
+                self.h_data[::, 1::2, ::2] = h_fcc[1]
+                self.h_data[::, ::2, 1::2] = h_fcc[2]
+                self.h_data[::, 1::2, 1::2] = h_fcc[3] 
+                
+                mf = cl.mem_flags
+                fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
+                self.d_data = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.volume_res[:3], hostbuf=self.h_data)
+                self.d_data_QI = cl.Image(context=self.ctx, flags=mf.READ_WRITE, format=fmt, shape=self.h_data.shape)
+
+                self.dim = dim
+
+            case Lattice.ShiftedFCC:
+                # note that axis order of numpy array.(z,y,x)
+                self.h_data = np.reshape(self.h_data, [dim[2], dim[1], dim[0]])
+                self.volume_res = [self.dim[0], self.dim[1], self.dim[2]//2]
+                fcc_dim = tuple([self.dim[i]//2 for i in range(3)])
+
+                # fcc offset : 000, 011, 101, 110
+                # note that axis order of numpy array.(z,y,x) 
+                offset = [[0,0,0], [1,1,0], [1,0,1], [0,1,1]]
+                h_fcc = [np.array(self.h_data[o[0]::2, o[1]::2, o[2]::2]) for o in offset]
+                self.h_data = np.zeros([self.volume_res[2], self.volume_res[1], self.volume_res[0]], dtype=np.float32)
+                self.h_data[:, :fcc_dim[1], :fcc_dim[0]] = h_fcc[0]
+                self.h_data[:, fcc_dim[1]:, :fcc_dim[0]] = h_fcc[1]
+                self.h_data[:, :fcc_dim[1], fcc_dim[0]:] = h_fcc[2]
+                self.h_data[:, fcc_dim[1]:, fcc_dim[0]:] = h_fcc[3] 
+                
+                mf = cl.mem_flags
+                fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
+                self.d_data = cl.Image(context=self.ctx, flags=mf.READ_ONLY|mf.COPY_HOST_PTR, format=fmt, shape=self.volume_res[:3], hostbuf=self.h_data)
+                self.d_data_QI = cl.Image(context=self.ctx, flags=mf.READ_WRITE, format=fmt, shape=self.h_data.shape)
+
+                self.dim = dim
+        
         self.Log.info("Volume data infomation :")
         self.Log.info("\tresolution : ({0}, {1}, {2})".format(*dim))
         self.Log.info("\trange : {0:.4f} - {1:.4f}".format(np.min(self.h_data), np.max(self.h_data)))
@@ -101,6 +146,7 @@ class VolumeData :
         sz_global = tuple(sz_global-1 + sz_local-(sz_global-1)%sz_local)
         sz_local = tuple(sz_local)
 
+        evt = []
         if self.lattice == Lattice.CC : 
             #evt = self.prg.applyQuasiInterpolator_CC(queue=self.queue,
             evt = self.prg.applyQuasiInterpolator_CC_loc(queue=self.queue,
@@ -121,48 +167,3 @@ class VolumeData :
                                                arg3=np.int32(self.dim))
             
         return evt
-
-
-if __name__ == "__main__":
-    Log = logging.getLogger("Raycaster")
-    Log.setLevel(logging.DEBUG)
-    hFileLog = logging.FileHandler("./output/raycaster.log")
-    hStreamLog = logging.StreamHandler()
-    formatter = logging.Formatter(fmt='[%(levelname)s][%(asctime)s.%(msecs)03d][%(funcName)s():%(lineno)d] %(message)s',
-                                  datefmt='%H:%M:%S')
-    hFileLog.setFormatter(formatter)
-    hStreamLog.setFormatter(formatter)
-    Log.addHandler(hFileLog)
-    Log.addHandler(hStreamLog)
-
-    platforms = cl.get_platforms()
-    devices = platforms[0].get_devices(device_type=cl.device_type.GPU)
-    ctx_properties = [(cl.context_properties.PLATFORM, platforms[0])]
-    ctx = cl.Context(dev_type=cl.device_type.GPU, properties=ctx_properties)
-    queue = cl.CommandQueue(context=ctx, device=devices[0], 
-        properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-    with open('./kernel/volume_data.cl', 'r') as fp : src = fp.read()
-    prg = cl.Program(ctx, src)
-    prg.build(options=["",],devices=[devices[0],], cache_dir=None)
-
-    h_data = np.random.rand(8,8,8).astype(np.float32)
-
-    mf = cl.mem_flags
-    fmt = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
-    d_in = cl.Image(context=ctx, flags=mf.READ_WRITE|mf.COPY_HOST_PTR, format=fmt, shape=h_data.shape, hostbuf=h_data)
-    d_out = cl.Image(context=ctx, flags=mf.READ_WRITE, format=fmt, shape=h_data.shape)
-
-    h_in = np.zeros_like(h_data)
-    h_out = np.zeros_like(h_data)
-
-    cl.enqueue_copy(queue, h_in, d_in, origin=(0,0,0), region=h_data.shape)
-
-    queue.finish()
-
-    print(h_in-h_data)
-
-
-
-
-    exit()

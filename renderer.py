@@ -1,5 +1,5 @@
 """
-raycaster.py
+renderer.py
 
 # Copyright (c) 2023, Hyunjun Kim
 # All rights reserved.
@@ -95,10 +95,10 @@ class Renderer :
         glBindVertexArray(self.__VAO)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
         glFinish()
-
+    
     def getFrameBufferData(self) :
         return glReadPixels(0,0, 512,512, GL_RGBA, GL_UNSIGNED_BYTE)
-        
+
 class GLProgram :
     def __init__(self, title, vtx_shader, frag_shader) :
         self.title = title

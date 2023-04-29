@@ -6,7 +6,6 @@ out vec4 fColor;
 
 uniform sampler2D tex_position;
 uniform sampler2D tex_gradient;
-//uniform sampler2D tex_colormap;
 uniform mat4        MV;
 uniform int orientation;
 
