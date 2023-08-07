@@ -42,17 +42,7 @@ class Raycaster :
         print(len(nr_valid))
         print(sum(nr_valid))
    
-    def genRay(self, MVP, data_ratio) :
-        return self.prg.genRay(
-            queue=self.queue, 
-            global_size=self.dim_ray, 
-            local_size=None, 
-            arg0=self.rays,            
-            arg1=np.float32(MVP),
-            arg2=np.float32(data_ratio)
-        )
-
-    def raycast(self, iso, buf_pos, volume_data, data_ratio) :
+    def raycast(self, iso, buf_pos, volume_data, MVP, data_ratio) :
         buf_vol, dim = volume_data
         return self.prg.raycast(
             queue=self.queue, 
@@ -60,7 +50,7 @@ class Raycaster :
             local_size=None, 
             arg0=buf_pos,
             arg1=buf_vol,
-            arg2=self.rays,
+            arg2=np.float32(MVP),
             arg3=np.float32(data_ratio),
             arg4=np.float32(dim),
             arg5=np.float32(iso),

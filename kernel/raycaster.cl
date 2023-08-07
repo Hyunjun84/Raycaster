@@ -25,17 +25,17 @@ __inline float4 MDotV(float16 m, float4 v)
     return (float4)(dot(m.s0123, v),dot(m.s4567, v), dot(m.s89ab, v), dot(m.scdef, v));
 }
 
-__kernel void genRay(__global float8* ray, float16 M, float4 data_ratio)
+__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, float16 M, float4 scale, float4 dim, float level)
 {
-	int2 idx = (int2)(get_global_id(0), get_global_id(1));
-	int2 sz  = (int2)(get_global_size(0), get_global_size(1));
+    int2 idx = (int2)(get_global_id(0), get_global_id(1));
+    int2 sz  = (int2)(get_global_size(0), get_global_size(1));
 
-	int id = sz.x*idx.y+idx.x;
+    //int id = sz.x*idx.y+idx.x;
 
-	float4 b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); 
-	float4 e = (float4)(b.xy, 1.0f, 1.0f);
+    float4 b = (float4)(convert_float2(idx*2)/convert_float2(sz-1)-1.0f, -1.0f, 1.0f); 
+    float4 e = (float4)(b.xy, 1.0f, 1.0f);
 
-	b = MDotV(M, b);
+    b = MDotV(M, b);
     e = MDotV(M, e);
 
     b = b/b.w;
@@ -43,9 +43,9 @@ __kernel void genRay(__global float8* ray, float16 M, float4 data_ratio)
 
     float4 d = (float4)(normalize(e.xyz-b.xyz), 0);
 
-    float2 hit_yz = (float2)(-data_ratio.x-b.x, data_ratio.x-b.x)/d.x;
-    float2 hit_zx = (float2)(-data_ratio.y-b.y, data_ratio.y-b.y)/d.y; 
-    float2 hit_xy = (float2)(-data_ratio.z-b.z, data_ratio.z-b.z)/d.z;
+    float2 hit_yz = (float2)(-scale.x-b.x, scale.x-b.x)/d.x;
+    float2 hit_zx = (float2)(-scale.y-b.y, scale.y-b.y)/d.y; 
+    float2 hit_xy = (float2)(-scale.z-b.z, scale.z-b.z)/d.z;
 
     hit_yz = (float2)(min(hit_yz.x, hit_yz.y), max(hit_yz.x, hit_yz.y));
     hit_zx = (float2)(min(hit_zx.x, hit_zx.y), max(hit_zx.x, hit_zx.y));
@@ -58,28 +58,23 @@ __kernel void genRay(__global float8* ray, float16 M, float4 data_ratio)
     if(any(isnan(bound)) || any(isinf(bound)) || (bound.x>bound.y))
         bound = (float2)(0);
 
-    ray[id] = (float8)(b.xyz+d.xyz*bound.x, b.w, b.xyz+d.xyz*bound.y, e.w);
-}
+    
+    e.xyz = b.xyz+d.xyz*bound.y;
+    b.xyz = b.xyz+d.xyz*bound.x; 
 
-__kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol, __global float8* Rays, float4 scale, float4 dim, float level)
-{
-    int2 id = (int2)(get_global_id(0), get_global_id(1));
-    int2 sz  = (int2)(get_global_size(0), get_global_size(1));
-
-	float8 ray = Rays[sz.x*id.y+id.x];
 
     // Normalized domain -> texture coordinates
-	float3 p = (ray.s012/scale.xyz*0.5f+0.5f)*dim.xyz-0.5f;
-    float3 e = (ray.s456/scale.xyz*0.5f+0.5f)*dim.xyz-0.5f; // [-0.5 ... dim-0.5]^3
-	float3 p_prev;
+    float3 p = (b.xyz/scale.xyz*0.5f+0.5f)*dim.xyz-0.5f;
+    e .xyz = (e.xyz/scale.xyz*0.5f+0.5f)*dim.xyz-0.5f; // [-0.5 ... dim-0.5]^3
+    float3 p_prev;
 
-	float ray_step = 0.1f;
-    float max_ray_len = distance(p,e);
+    float ray_step = 0.1f;
+    float max_ray_len = distance(p,e.xyz);
     float voxel = eval(p, vol);
     float voxel_prev = voxel;
     
     float orientation = 2.f*convert_float(voxel < level)-1.f;     // equivalent to (voxel<level?1:-1)
-    float3 dir = normalize(e-p)*ray_step;
+    float3 dir = normalize(e.xyz-p)*ray_step;
 
     int max_iter = min(100000, convert_int(max_ray_len/ray_step));//convert_int(ray.w*fdim.z/dir.z));
     float4 val = (float4)(0);
@@ -87,9 +82,9 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
     int i=0;
 
     for(i=0; i<max_iter; i++) {
-    	p = p+dir.xyz;
-    	voxel = eval(p, vol);
-		if(orientation*voxel > orientation*level) {
+        p = p+dir.xyz;
+        voxel = eval(p, vol);
+        if(orientation*voxel > orientation*level) {
             // One step of Regula Falsi
             if(fabs(voxel-voxel_prev) > 1E-6) 
                 p = (p*(voxel_prev-level) - p_prev*(voxel-level))/(voxel_prev-voxel);
@@ -101,7 +96,7 @@ __kernel void raycast(__write_only image2d_t Position, __read_only image3d_t vol
         p_prev=p;
     }
     
-    write_imagef(Position, id, val);
+    write_imagef(Position, idx, val);
 }
 
 __kernel void evalGradient(__write_only image2d_t Gradient, __read_only image2d_t Position, __read_only image3d_t vol, float4 dim, float4 scale)

@@ -162,23 +162,24 @@ class AppController :
         vol_data = self.volume_data.getVolumeData(self.withQI)
 
         cl.enqueue_acquire_gl_objects(self.queue, self.deffered_buffer)
-        evt1 = self.raycaster.genRay(self.inv_mvp, self.volume_data.data_ratio)
-        evt2 = self.raycaster.raycast(self.isovalue,
+
+        evt1 = self.raycaster.raycast(self.isovalue,
                                       self.deffered_buffer[0],
                                       vol_data,
+                                      self.inv_mvp,
                                       self.volume_data.data_ratio)
-        evt3 = self.raycaster.evalGradient(self.deffered_buffer[1],
+        evt2 = self.raycaster.evalGradient(self.deffered_buffer[1],
                                            self.deffered_buffer[0],
                                            vol_data,
                                            self.volume_data.data_ratio)
-        evt4 = self.raycaster.evalHessian(self.deffered_buffer[2],
+        evt3 = self.raycaster.evalHessian(self.deffered_buffer[2],
                                           self.deffered_buffer[3],
                                           self.deffered_buffer[0],
                                           vol_data,
                                           self.volume_data.data_ratio)
         cl.enqueue_release_gl_objects(self.queue, self.deffered_buffer)
         self.queue.finish()
-        return (evt1, evt2, evt3, evt4)
+        return (evt1, evt2, evt3)
 
 
     def rendering(self) :
